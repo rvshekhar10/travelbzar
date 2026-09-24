@@ -41,13 +41,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="manifest" href="/manifest.json" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
-      <body className="min-h-screen bg-[#F5F7F5] text-[#132238] flex flex-col antialiased">
+      <body className="min-h-screen bg-[#F5F7F5] text-[#132238] flex flex-col antialiased" suppressHydrationWarning>
         <AuthProvider>
           <AppHeader />
           <main className="flex-1 pb-16 sm:pb-0">{children}</main>
