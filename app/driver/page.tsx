@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/firebase/authContext';
 import { useBookings } from '@/hooks/useBookings';
@@ -17,12 +17,20 @@ import {
   CheckCircle2,
   AlertCircle,
   ExternalLink,
+  Radio,
+  Loader2,
+  Check,
 } from 'lucide-react';
 import { getGoogleMapsNavigationUrl } from '@/services/mapService';
+import { acceptBookingByDriver } from '@/services/bookingService';
 
 export default function DriverDashboardPage() {
   const { user } = useAuth();
-  const { bookings, loading } = useBookings();
+  const { bookings, loading, refresh } = useBookings();
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+
+  // Incoming pending requests looking for a driver
+  const pendingRequests = bookings.filter((b) => b.status === 'PENDING_CONFIRMATION');
 
   // Driver trips (either explicitly assigned or available in POC)
   const driverBookings = bookings.filter((b) => !b.driverId || b.driverId === user?.id || b.driverId === 'drv-1');
@@ -40,6 +48,18 @@ export default function DriverDashboardPage() {
   // 3. Completed Today
   const todayStr = new Date().toISOString().split('T')[0];
   const todayTrips = driverBookings.filter((b) => b.bookingDate === todayStr);
+
+  const handleAcceptRide = async (bookingId: string) => {
+    setAcceptingId(bookingId);
+    try {
+      await acceptBookingByDriver(bookingId, user?.id || 'drv-1');
+      await refresh();
+    } catch (err) {
+      console.error('Failed to accept ride:', err);
+    } finally {
+      setAcceptingId(null);
+    }
+  };
 
   return (
     <div className="py-6 sm:py-8 px-4 sm:px-6 max-w-4xl mx-auto space-y-6">
@@ -61,6 +81,87 @@ export default function DriverDashboardPage() {
           <Car className="w-6 h-6" />
         </div>
       </div>
+
+      {/* INCOMING RIDE REQUESTS (Awaiting Driver or Owner Confirmation) */}
+      {pendingRequests.length > 0 && !currentTrip && (
+        <div className="bg-amber-50 border-2 border-amber-400 rounded-3xl p-5 sm:p-6 shadow-md space-y-4 animate-pulse-subtle">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
+              <span className="text-xs font-black uppercase tracking-wider text-amber-900">
+                New Ride Requests Finding Chauffeur ({pendingRequests.length})
+              </span>
+            </div>
+            <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2.5 py-0.5 rounded-full">
+              Available to Accept
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {pendingRequests.map((req) => (
+              <div
+                key={req.id}
+                className="bg-white rounded-2xl p-4 border border-amber-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+              >
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-slate-900 font-mono">
+                      {req.bookingNumber}
+                    </span>
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                      {req.bookingType.replace('_', ' ')}
+                    </span>
+                    <span className="text-xs font-bold text-slate-500">
+                      • {req.bookingDate} at {req.pickupTime} IST
+                    </span>
+                  </div>
+
+                  <div className="text-xs space-y-1 text-slate-700">
+                    <div className="truncate">
+                      <strong className="text-emerald-700">Pickup:</strong> {req.pickup.address}
+                    </div>
+                    <div className="truncate">
+                      <strong className="text-rose-700">Drop:</strong> {req.drop.address}
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-slate-500 pt-1 flex items-center gap-3">
+                    <span>Passenger: <strong>{req.customerName}</strong> ({req.customerPhone})</span>
+                    <span>• Est. {req.distanceKm} km</span>
+                  </div>
+                </div>
+
+                <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-3 shrink-0">
+                  <div className="text-left sm:text-right">
+                    <span className="text-[10px] text-slate-400 block font-bold">Estimated Fare</span>
+                    <span className="text-lg font-black text-[#078A32]">
+                      ₹{req.fare.totalFare.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => handleAcceptRide(req.id)}
+                    disabled={acceptingId === req.id}
+                    className="flex items-center gap-1.5 bg-[#078A32] hover:bg-[#056B27] active:scale-95 disabled:opacity-50 text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-md transition-all"
+                  >
+                    {acceptingId === req.id ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Accepting...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Accept & Dispatch</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 1. CURRENT ACTIVE TRIP (Highest Priority for Driver) */}
       {currentTrip && (

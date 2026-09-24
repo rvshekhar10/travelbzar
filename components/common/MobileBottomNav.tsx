@@ -13,7 +13,8 @@ export const MobileBottomNav: React.FC = () => {
   const { unreadCount } = useNotifications(user?.id);
 
   // Only render on mobile devices and inside authenticated/active portals
-  if (!user && pathname === '/') return null;
+  const isPublic = !pathname.startsWith('/customer') && !pathname.startsWith('/driver') && !pathname.startsWith('/owner');
+  if (!user && isPublic) return null;
 
   // Driver navigation
   if (role === 'driver') {

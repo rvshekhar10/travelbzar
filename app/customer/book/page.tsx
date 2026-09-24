@@ -26,12 +26,16 @@ import {
   Info,
   AlertCircle,
   Sparkles,
+  User,
+  KeyRound,
+  Mail,
+  Loader2,
 } from 'lucide-react';
 
 function BookCabContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user } = useAuth();
+  const { user, login, register, demoLogin } = useAuth();
   const { pricing } = usePricing();
 
   // Booking Stepper state: 1: TYPE, 2: LOCATIONS, 3: DATE & TIME, 4: FARE & ROUTE, 5: CONFIRM
@@ -40,6 +44,12 @@ function BookCabContent() {
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   const [locationDetecting, setLocationDetecting] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+
+  // Authentication requirement state for guests
+  const [authTab, setAuthTab] = useState<'signup' | 'signin'>('signup');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Form Fields
   const [bookingType, setBookingType] = useState<BookingType>(
@@ -170,6 +180,44 @@ function BookCabContent() {
 
   // Submit booking
   const handleConfirmBooking = async () => {
+    setAuthError(null);
+
+    // If user is not authenticated, require registration or login like Ola/Uber
+    let activeUser = user;
+    if (!activeUser) {
+      if (authTab === 'signup') {
+        if (!customerName || !customerPhone || !authEmail || !authPassword) {
+          setAuthError('Please fill in your Name, Phone, Email, and Password to create your account.');
+          return;
+        }
+        setSubmitting(true);
+        const regRes = await register({
+          email: authEmail,
+          pass: authPassword,
+          name: customerName,
+          phone: customerPhone,
+          role: 'customer',
+        });
+        if (!regRes.success) {
+          setAuthError(regRes.error || 'Failed to create account.');
+          setSubmitting(false);
+          return;
+        }
+      } else {
+        if (!authEmail || !authPassword) {
+          setAuthError('Please enter your email and password to sign in.');
+          return;
+        }
+        setSubmitting(true);
+        const loginRes = await login(authEmail, authPassword);
+        if (!loginRes.success) {
+          setAuthError(loginRes.error || 'Invalid email or password.');
+          setSubmitting(false);
+          return;
+        }
+      }
+    }
+
     setSubmitting(true);
     try {
       const airportDetails: AirportDetails | undefined =
@@ -184,10 +232,10 @@ function BookCabContent() {
           : undefined;
 
       const newBooking = await createNewBooking({
-        customerId: user?.id || `cust-${Date.now()}`,
+        customerId: user?.id || (authEmail ? `user-${authEmail}` : 'user-customer-1'),
         customerName: customerName || user?.name || 'Customer',
-        customerPhone: customerPhone || '+91 9007210697',
-        customerEmail: user?.email,
+        customerPhone: customerPhone || user?.phone || '+91 9431100000',
+        customerEmail: user?.email || authEmail,
         bookingType,
         bookingDate,
         pickupTime,
@@ -199,10 +247,10 @@ function BookCabContent() {
         customerNotes,
       });
 
-      setConfirmedBooking(newBooking);
+      // Transition straight to live tracking / finding driver screen
+      router.push(`/customer/bookings/${newBooking.id}`);
     } catch (err) {
       console.error('Booking failed:', err);
-    } finally {
       setSubmitting(false);
     }
   };
@@ -780,6 +828,141 @@ function BookCabContent() {
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
             />
           </div>
+
+          {/* Ola/Uber Style Account Creation / Sign-In requirement */}
+          {!user ? (
+            <div className="bg-emerald-50/70 border-2 border-emerald-400/80 rounded-2xl p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-emerald-200">
+                <div className="flex items-center gap-2">
+                  <User className="w-5 h-5 text-[#078A32]" />
+                  <span className="font-black text-sm text-[#061B33]">
+                    Create Account to Request Cab
+                  </span>
+                </div>
+
+                <div className="flex items-center bg-white rounded-xl p-1 border border-emerald-300 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthTab('signup');
+                      setAuthError(null);
+                    }}
+                    className={`px-3 py-1 rounded-lg transition-all ${
+                      authTab === 'signup'
+                        ? 'bg-[#078A32] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    New Rider (Sign Up)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthTab('signin');
+                      setAuthError(null);
+                    }}
+                    className={`px-3 py-1 rounded-lg transition-all ${
+                      authTab === 'signin'
+                        ? 'bg-[#078A32] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Existing Rider (Sign In)
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Like Ola & Uber, creating an account ensures your chauffeur can reach you and you can track their live GPS departure from the garage.
+              </p>
+
+              {authError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-xs font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{authError}</span>
+                </div>
+              )}
+
+              {authTab === 'signup' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Email Address</label>
+                    <input
+                      type="email"
+                      required
+                      value={authEmail}
+                      onChange={(e) => setAuthEmail(e.target.value)}
+                      placeholder="e.g. rider@example.com"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Set Password</label>
+                    <input
+                      type="password"
+                      required
+                      value={authPassword}
+                      onChange={(e) => setAuthPassword(e.target.value)}
+                      placeholder="Minimum 6 characters"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1">Email Address</label>
+                      <input
+                        type="email"
+                        required
+                        value={authEmail}
+                        onChange={(e) => setAuthEmail(e.target.value)}
+                        placeholder="rider@example.com"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
+                      />
+                    </div>
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1">Password</label>
+                      <input
+                        type="password"
+                        required
+                        value={authPassword}
+                        onChange={(e) => setAuthPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        demoLogin('customer');
+                      }}
+                      className="text-[#078A32] font-bold hover:underline"
+                    >
+                      1-Click Sign In as Amit Sharma (Demo Rider) →
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-300 flex items-center justify-between text-xs text-emerald-950">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="w-5 h-5 text-[#078A32] shrink-0" />
+                <div>
+                  <span className="font-black text-slate-900 block">{user.name}</span>
+                  <span className="text-slate-600">{user.phone || user.email}</span>
+                </div>
+              </div>
+              <span className="text-[11px] font-extrabold uppercase bg-emerald-200/70 text-emerald-900 px-2.5 py-1 rounded-full">
+                Verified Account ✓
+              </span>
+            </div>
+          )}
 
           {/* Booking Summary Box */}
           <div className="bg-[#061B33] text-white p-5 rounded-2xl space-y-3">

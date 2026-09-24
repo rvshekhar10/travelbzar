@@ -302,6 +302,65 @@ export async function confirmBookingByOwner(
   return { success: true };
 }
 
+export async function acceptBookingByDriver(
+  bookingId: string,
+  driverId: string
+): Promise<{ success: boolean; error?: string }> {
+  const booking = await getBookingById(bookingId);
+  if (!booking) return { success: false, error: 'Booking not found' };
+
+  if (booking.status !== 'PENDING_CONFIRMATION') {
+    return { success: false, error: `Booking is already in status ${booking.status}` };
+  }
+
+  const drivers = await getDrivers();
+  const driver = drivers.find((d) => d.id === driverId) || {
+    id: driverId,
+    name: 'Rajesh Kumar (Chauffeur)',
+    phone: '+91 9876543210',
+    assignedVehicleId: 'veh-1',
+  };
+
+  const vehicles = await getVehicles();
+  const vehicle = vehicles.find((v) => v.id === driver.assignedVehicleId) || vehicles[0];
+
+  const updatedBooking: Booking = {
+    ...booking,
+    status: 'DRIVER_ASSIGNED',
+    driverId: driver.id,
+    driverName: driver.name,
+    driverPhone: driver.phone,
+    vehicleId: vehicle?.id || 'veh-1',
+    vehicleModel: vehicle ? `${vehicle.make} ${vehicle.model}` : 'Hyundai Venue',
+    vehicleRegistrationNumber: vehicle?.registrationNumber || 'JH-10-BX-4421',
+    confirmedAt: new Date().toISOString(),
+    driverAssignedAt: new Date().toISOString(),
+  };
+
+  await saveBooking(updatedBooking);
+
+  await addBookingEvent({
+    bookingId: booking.id,
+    action: 'Driver Accepted Ride',
+    performedBy: driver.name,
+    role: 'driver',
+    metadata: {
+      driverId: driver.id,
+      vehicleId: vehicle?.id,
+    },
+  });
+
+  await addNotification({
+    userId: booking.customerId,
+    title: 'Chauffeur Confirmed! ✓',
+    body: `${driver.name} has accepted your trip #${booking.bookingNumber} in ${updatedBooking.vehicleModel} (${updatedBooking.vehicleRegistrationNumber}). Chauffeur is departing from garage.`,
+    type: 'DRIVER_ASSIGNED',
+    bookingId: booking.id,
+  });
+
+  return { success: true };
+}
+
 export async function updateBookingTripStatus(
   bookingId: string,
   newStatus: BookingStatus,
@@ -411,6 +470,14 @@ export async function updateBookingTripStatus(
   });
 
   return { success: true };
+}
+
+export async function cancelBooking(
+  bookingId: string,
+  reason: string,
+  actor: { name: string; role: 'customer' | 'driver' | 'owner'; id: string }
+): Promise<{ success: boolean; error?: string }> {
+  return updateBookingTripStatus(bookingId, 'CANCELLED', actor);
 }
 
 export async function recordBookingPayment(
