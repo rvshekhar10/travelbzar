@@ -1,0 +1,41 @@
+{
+  "name": "Travel BZAR - Premium Cab Service",
+  "short_name": "Travel BZAR",
+  "description": "Premium Cab Service in Dhanbad, Jharkhand. Comfort, Safety, and Reliability for Local & Airport Travel.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#061B33",
+  "theme_color": "#061B33",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Book a Cab",
+      "url": "/customer/book",
+      "description": "Book a cab instantly"
+    },
+    {
+      "name": "My Bookings",
+      "url": "/customer/bookings",
+      "description": "View active and past bookings"
+    },
+    {
+      "name": "Driver Dashboard",
+      "url": "/driver",
+      "description": "Driver trip console"
+    }
+  ]
+}
