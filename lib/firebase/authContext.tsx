@@ -116,6 +116,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     setLoading(true);
 
+    // Check if user exists in local store (e.g. provisioned by owner in driver/fleet setup)
+    if (typeof window !== 'undefined') {
+      try {
+        const rawStore = localStorage.getItem('travelbzar_poc_data_v1');
+        if (rawStore) {
+          const parsed = JSON.parse(rawStore);
+          const matchedUser = Object.values(parsed.users || {}).find(
+            (u: unknown) => (u as AppUser)?.email?.toLowerCase().trim() === lowerEmail
+          ) as AppUser | undefined;
+          if (matchedUser) {
+            setUser(matchedUser);
+            localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(matchedUser));
+            setLoading(false);
+            return { success: true };
+          }
+        }
+      } catch {
+        // fallback
+      }
+    }
+
     // Check if it's one of the demo credentials
     const lowerEmail = email.toLowerCase().trim();
     if (lowerEmail.includes('owner')) {

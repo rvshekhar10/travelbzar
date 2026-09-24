@@ -1,25 +1,40 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/authContext';
 import { OwnerSidebar } from '@/components/common/OwnerSidebar';
+import { OwnerPWAInstallPrompt } from '@/components/common/OwnerPWAInstallPrompt';
 import { ShieldAlert, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function OwnerLayout({ children }: { children: React.ReactNode }) {
   const { user, role, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+
+  const isLoginPage = pathname === '/owner/login';
 
   useEffect(() => {
-    if (!loading) {
+    if (!loading && !isLoginPage) {
       if (!user) {
-        router.replace('/login?redirect=/owner');
+        router.replace('/owner/login');
       } else if (role !== 'owner') {
         router.replace('/customer');
       }
     }
-  }, [user, role, loading, router]);
+  }, [user, role, loading, router, isLoginPage]);
+
+  // If on secret login page, render clean without layout shell
+  if (isLoginPage) {
+    return (
+      <>
+        <link rel="manifest" href="/owner-manifest.json" />
+        {children}
+        <OwnerPWAInstallPrompt />
+      </>
+    );
+  }
 
   if (loading) {
     return (
@@ -38,22 +53,26 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         </div>
         <h2 className="text-lg font-black text-[#061B33]">Access Restricted</h2>
         <p className="text-xs text-slate-500 leading-relaxed">
-          The Owner Command Center requires administrative authorization. Please sign in with an owner account.
+          The Owner Command Center requires private administrative authorization.
         </p>
         <Link
-          href="/login?redirect=/owner"
+          href="/owner/login"
           className="bg-[#061B33] hover:bg-[#0B223D] text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-md transition-all"
         >
-          Sign In as Owner
+          Sign In to Owner Portal
         </Link>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-5rem)]">
-      <OwnerSidebar />
-      <div className="flex-1 bg-[#F5F7F5] overflow-y-auto">{children}</div>
-    </div>
+    <>
+      <link rel="manifest" href="/owner-manifest.json" />
+      <div className="flex min-h-[calc(100vh-5rem)]">
+        <OwnerSidebar />
+        <div className="flex-1 bg-[#F5F7F5] overflow-y-auto">{children}</div>
+      </div>
+      <OwnerPWAInstallPrompt />
+    </>
   );
 }

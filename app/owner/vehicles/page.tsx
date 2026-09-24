@@ -2,11 +2,14 @@
 
 import React, { useState } from 'react';
 import { useVehicles } from '@/hooks/useVehicles';
+import { useDrivers } from '@/hooks/useDrivers';
 import { Vehicle, VehicleStatus } from '@/types';
-import { Car, Plus, ShieldCheck, AlertCircle, Trash2, Edit2 } from 'lucide-react';
+import { Car, Plus, ShieldCheck, AlertCircle, Trash2, Edit2, User, CheckCircle2 } from 'lucide-react';
+import Link from 'next/link';
 
 export default function OwnerVehiclesPage() {
   const { vehicles, loading, addOrUpdateVehicle, removeVehicle } = useVehicles();
+  const { drivers } = useDrivers();
   const [showAddModal, setShowAddModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -14,7 +17,7 @@ export default function OwnerVehiclesPage() {
   const [make, setMake] = useState('Hyundai');
   const [model, setModel] = useState('');
   const [regNo, setRegNo] = useState('');
-  const [color, setColor] = useState('White');
+  const [color, setColor] = useState('Polar White');
   const [year, setYear] = useState(2024);
   const [status, setStatus] = useState<VehicleStatus>('AVAILABLE');
 
@@ -24,11 +27,11 @@ export default function OwnerVehiclesPage() {
 
     const newVeh: Vehicle = {
       id: `veh-${Date.now()}`,
-      registrationNumber: regNo.toUpperCase(),
+      registrationNumber: regNo.toUpperCase().trim(),
       make,
       model,
       color,
-      vehicleType: 'Compact SUV',
+      vehicleType: 'Premium Compact SUV',
       year,
       status,
       createdAt: new Date().toISOString(),
@@ -44,142 +47,181 @@ export default function OwnerVehiclesPage() {
     }
   };
 
+  const currentVehicle = vehicles[0];
+
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-[#078A32]">
-            Fleet Capacity: Max 2 Vehicles
+          <span className="text-xs font-black uppercase tracking-wider text-[#078A32]">
+            Fleet Capacity: Max 1 Vehicle (Tier 1 Setup)
           </span>
           <h1 className="text-2xl sm:text-3xl font-black text-[#061B33]">Fleet Management</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Manage your dedicated premium cabs. Strict maximum 2 vehicle capacity.
+            Manage your dedicated primary cab. Fleet operations currently support 1 active vehicle.
           </p>
         </div>
 
-        {vehicles.length < 2 && (
+        {vehicles.length === 0 && (
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-colors self-start sm:self-auto"
+            className="flex items-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-colors self-start sm:self-auto"
           >
             <Plus className="w-4 h-4" />
-            <span>Add Vehicle ({vehicles.length}/2)</span>
+            <span>Add Primary Vehicle (0/1)</span>
           </button>
         )}
       </div>
 
-      {vehicles.length >= 2 && (
-        <div className="p-3.5 rounded-2xl bg-slate-100 border border-slate-300 text-xs text-slate-700 flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-[#078A32] shrink-0" />
-          <span>
-            Fleet at full operational capacity (2 vehicles). To add another vehicle, archive or remove an existing vehicle first.
+      {/* Fleet Capacity Status Banners */}
+      {vehicles.length === 0 ? (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-3xl p-6 text-xs text-amber-900 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-black text-amber-950">
+            <AlertCircle className="w-5 h-5 text-amber-600" />
+            <span>Step 1: No Vehicle Listed (0/1 Active Vehicles)</span>
+          </div>
+          <p className="text-amber-800 leading-relaxed">
+            Before customer bookings can be accepted or dispatched, you must register your primary cab. Currently, you can list 1 dedicated vehicle.
+          </p>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="bg-[#078A32] hover:bg-[#056B27] text-white font-bold px-4 py-2 rounded-xl text-xs shadow-xs"
+          >
+            Register Primary Vehicle Now →
+          </button>
+        </div>
+      ) : (
+        <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-4 text-xs text-emerald-900 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-[#078A32] shrink-0" />
+            <span>
+              Primary cab registered (<strong>1 of 1</strong> active capacity). To replace this cab, delete the existing record first.
+            </span>
+          </div>
+          <span className="text-[10px] font-black uppercase bg-[#078A32] text-white px-2.5 py-1 rounded-full shrink-0">
+            Capacity Full (1/1)
           </span>
         </div>
       )}
 
-      {/* Vehicles Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {vehicles.map((v, idx) => (
-          <div
-            key={v.id}
-            className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4 relative"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <span className="text-xs font-black uppercase text-slate-400">
-                Vehicle {idx + 1} of 2
-              </span>
-              <span
-                className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${
-                  v.status === 'AVAILABLE'
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                    : 'bg-amber-50 text-amber-800 border-amber-300'
-                }`}
-              >
-                {v.status}
-              </span>
-            </div>
-
+      {/* Listed Vehicle Details Card */}
+      {currentVehicle && (
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-[#061B33] text-white flex items-center justify-center font-bold text-xl shadow-md">
-                <Car className="w-7 h-7 text-[#42B900]" />
+              <div className="w-16 h-16 rounded-2xl bg-[#061B33] text-white flex items-center justify-center font-bold text-2xl shadow-md">
+                <Car className="w-8 h-8 text-[#42B900]" />
               </div>
               <div>
-                <h3 className="text-base font-black text-slate-900">
-                  {v.make} {v.model}
-                </h3>
-                <div className="font-mono text-xs font-bold text-slate-600 mt-0.5">
-                  {v.registrationNumber}
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  {v.color} • {v.year} • {v.vehicleType}
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#078A32] block">
+                  Primary Fleet Vehicle
+                </span>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900">
+                  {currentVehicle.make} {currentVehicle.model}
+                </h2>
+                <div className="font-mono text-sm font-black text-slate-700 mt-0.5">
+                  {currentVehicle.registrationNumber}
                 </div>
               </div>
             </div>
 
-            {v.notes && (
-              <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                {v.notes}
-              </p>
-            )}
-
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-3 self-start sm:self-auto">
               <select
-                value={v.status}
-                onChange={(e) => addOrUpdateVehicle({ ...v, status: e.target.value as VehicleStatus })}
-                className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white font-semibold"
+                value={currentVehicle.status}
+                onChange={(e) =>
+                  addOrUpdateVehicle({ ...currentVehicle, status: e.target.value as VehicleStatus })
+                }
+                className="px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white font-bold"
               >
-                <option value="AVAILABLE">AVAILABLE</option>
-                <option value="IN_SERVICE">IN SERVICE</option>
-                <option value="MAINTENANCE">MAINTENANCE</option>
+                <option value="AVAILABLE">AVAILABLE (Active)</option>
+                <option value="IN_SERVICE">IN SERVICE (On Trip)</option>
+                <option value="MAINTENANCE">MAINTENANCE (Offline)</option>
                 <option value="INACTIVE">INACTIVE</option>
               </select>
 
               <button
-                onClick={() => removeVehicle(v.id)}
-                className="text-slate-400 hover:text-rose-600 p-1 transition-colors"
-                title="Remove vehicle"
+                onClick={() => {
+                  if (confirm('Delete this primary vehicle? Chauffeur assignments linked to this cab will be unlinked.')) {
+                    removeVehicle(currentVehicle.id);
+                  }
+                }}
+                className="p-2 text-slate-400 hover:text-rose-600 transition-colors rounded-xl border border-slate-200 hover:border-rose-300"
+                title="Delete Vehicle"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
           </div>
-        ))}
-      </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+              <span className="text-slate-400 block font-bold text-[10px] uppercase">Color</span>
+              <span className="font-extrabold text-slate-800">{currentVehicle.color}</span>
+            </div>
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+              <span className="text-slate-400 block font-bold text-[10px] uppercase">Year</span>
+              <span className="font-extrabold text-slate-800">{currentVehicle.year}</span>
+            </div>
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+              <span className="text-slate-400 block font-bold text-[10px] uppercase">Class</span>
+              <span className="font-extrabold text-slate-800">{currentVehicle.vehicleType}</span>
+            </div>
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+              <span className="text-slate-400 block font-bold text-[10px] uppercase">Assigned Chauffeur</span>
+              {currentVehicle.currentDriverId ? (
+                <span className="font-extrabold text-[#078A32]">
+                  {drivers.find((d) => d.id === currentVehicle.currentDriverId)?.name || 'Assigned'}
+                </span>
+              ) : (
+                <Link
+                  href="/owner/drivers"
+                  className="font-bold text-amber-600 hover:underline block"
+                >
+                  + Assign Driver →
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Vehicle Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 text-xs animate-fade-in">
-            <h3 className="text-base font-extrabold text-[#061B33]">Add Fleet Vehicle</h3>
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4 text-xs animate-fade-in">
+            <h3 className="text-lg font-black text-[#061B33]">Register Primary Vehicle (1/1)</h3>
+            <p className="text-slate-500 text-[11px]">
+              Add your primary fleet vehicle. This cab will be assigned to your verified chauffeurs.
+            </p>
 
             {error && (
-              <div className="p-2.5 bg-red-50 text-red-800 rounded-xl border border-red-200">
+              <div className="p-3 bg-red-50 text-red-800 rounded-xl border border-red-200">
                 {error}
               </div>
             )}
 
-            <form onSubmit={handleAddVehicle} className="space-y-3">
+            <form onSubmit={handleAddVehicle} className="space-y-3.5">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Registration Number</label>
+                <label className="font-bold text-slate-700 block mb-1">Registration Number Plate</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. JH-10-BX-3003"
+                  placeholder="e.g. JH-10-BX-4421"
                   value={regNo}
                   onChange={(e) => setRegNo(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono font-bold uppercase focus:ring-2 focus:ring-[#078A32] focus:outline-hidden"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Make</label>
+                  <label className="font-bold text-slate-700 block mb-1">Make / Brand</label>
                   <input
                     type="text"
                     required
                     value={make}
                     onChange={(e) => setMake(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-semibold"
                   />
                 </div>
                 <div>
@@ -187,10 +229,33 @@ export default function OwnerVehiclesPage() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Creta SX"
+                    placeholder="e.g. Venue SX Turbo"
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Color</label>
+                  <input
+                    type="text"
+                    required
+                    value={color}
+                    onChange={(e) => setColor(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Manufacture Year</label>
+                  <input
+                    type="number"
+                    required
+                    value={year}
+                    onChange={(e) => setYear(Number(e.target.value))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-semibold"
                   />
                 </div>
               </div>
@@ -205,9 +270,9 @@ export default function OwnerVehiclesPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-[#078A32] hover:bg-[#056B27] text-white font-extrabold shadow-md"
+                  className="px-5 py-2 rounded-xl bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-black shadow-md transition-all"
                 >
-                  Add Vehicle
+                  Save Primary Vehicle
                 </button>
               </div>
             </form>

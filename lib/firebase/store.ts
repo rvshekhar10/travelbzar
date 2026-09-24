@@ -83,19 +83,6 @@ const DEFAULT_STATE: LocalStoreState = {
       notes: 'Pristine AC cab, verified condition',
       createdAt: new Date().toISOString(),
     },
-    'veh-2': {
-      id: 'veh-2',
-      registrationNumber: 'JH-10-BX-2002',
-      make: 'Hyundai',
-      model: 'Creta SX(O)',
-      variant: 'Diesel AT',
-      color: 'Titan Grey',
-      vehicleType: 'Premium SUV',
-      year: 2024,
-      status: 'AVAILABLE',
-      notes: 'Clean leatherette interior, high comfort',
-      createdAt: new Date().toISOString(),
-    },
   },
   drivers: {
     'drv-1': {
@@ -224,9 +211,9 @@ export async function saveVehicle(vehicle: Vehicle): Promise<{ success: boolean;
   const state = getLocalState();
   const currentVehicles = Object.values(state.vehicles);
 
-  // Check max 2 vehicles rule
-  if (!state.vehicles[vehicle.id] && currentVehicles.length >= 2) {
-    return { success: false, error: 'Vehicle limit reached. Maximum 2 vehicles permitted in fleet.' };
+  // Check max 1 vehicle rule
+  if (!state.vehicles[vehicle.id] && currentVehicles.length >= 1) {
+    return { success: false, error: 'Fleet limit reached. Currently only 1 active vehicle is permitted.' };
   }
 
   const updatedVehicle: Vehicle = {
@@ -258,6 +245,12 @@ export async function deleteVehicle(vehicleId: string): Promise<void> {
   }
   const state = getLocalState();
   delete state.vehicles[vehicleId];
+  // Unassign from drivers
+  Object.values(state.drivers).forEach((d) => {
+    if (d.assignedVehicleId === vehicleId) {
+      d.assignedVehicleId = undefined;
+    }
+  });
   saveLocalState(state);
 }
 
@@ -296,6 +289,40 @@ export async function saveDriver(driver: Driver): Promise<void> {
 
   const state = getLocalState();
   state.drivers[driver.id] = updatedDriver;
+
+  // 1. Provision user auth record for driver login
+  const driverUserId = `user-${driver.id}`;
+  const driverUser: AppUser = {
+    id: driverUserId,
+    role: 'driver',
+    name: driver.name,
+    email: driver.email,
+    phone: driver.phone,
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  };
+  state.users[driverUserId] = driverUser;
+
+  if (db) {
+    try {
+      await setDoc(doc(db, 'users', driverUserId), cleanForFirestore(driverUser), { merge: true });
+    } catch (e) {
+      // non-fatal
+    }
+  }
+
+  // 2. Link driver to assigned vehicle if provided
+  if (driver.assignedVehicleId && state.vehicles[driver.assignedVehicleId]) {
+    state.vehicles[driver.assignedVehicleId].currentDriverId = driver.id;
+    if (db) {
+      try {
+        await setDoc(doc(db, 'vehicles', driver.assignedVehicleId), { currentDriverId: driver.id }, { merge: true });
+      } catch (e) {
+        // non-fatal
+      }
+    }
+  }
+
   saveLocalState(state);
 }
 

@@ -67,35 +67,25 @@ export default function LoginPage() {
             Instant test access for all three role-based portals:
           </p>
 
-          <div className="grid grid-cols-3 gap-2 pt-1">
+          <div className="grid grid-cols-2 gap-3 pt-1">
             <button
               type="button"
               onClick={() => handleDemo('customer')}
-              className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-[#122B4D] hover:bg-[#183864] border border-slate-600 transition-all text-center active:scale-95"
+              className="flex flex-col items-center justify-center p-3 rounded-xl bg-[#122B4D] hover:bg-[#183864] border border-slate-600 transition-all text-center active:scale-95"
             >
               <User className="w-5 h-5 text-blue-400 mb-1" />
-              <span className="text-[11px] font-bold text-white">Customer</span>
-              <span className="text-[9px] text-slate-400">Book & Track</span>
+              <span className="text-xs font-bold text-white">Customer Rider</span>
+              <span className="text-[10px] text-slate-400">Book, Track & Pay</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleDemo('driver')}
-              className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-[#122B4D] hover:bg-[#183864] border border-slate-600 transition-all text-center active:scale-95"
+              className="flex flex-col items-center justify-center p-3 rounded-xl bg-[#122B4D] hover:bg-[#183864] border border-slate-600 transition-all text-center active:scale-95"
             >
               <Car className="w-5 h-5 text-emerald-400 mb-1" />
-              <span className="text-[11px] font-bold text-white">Driver</span>
-              <span className="text-[9px] text-slate-400">Live Trip</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleDemo('owner')}
-              className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-[#122B4D] hover:bg-[#183864] border border-slate-600 transition-all text-center active:scale-95"
-            >
-              <ShieldCheck className="w-5 h-5 text-amber-400 mb-1" />
-              <span className="text-[11px] font-bold text-white">Owner</span>
-              <span className="text-[9px] text-slate-400">Fleet & Rates</span>
+              <span className="text-xs font-bold text-white">Chauffeur</span>
+              <span className="text-[10px] text-slate-400">Accept, Drive & Collect</span>
             </button>
           </div>
         </div>

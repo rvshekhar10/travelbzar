@@ -41,6 +41,14 @@ export default function OwnerDashboardPage() {
   const availableVehiclesCount = vehicles.filter((v) => v.status === 'AVAILABLE').length;
   const activeDriversCount = drivers.filter((d) => d.status === 'ACTIVE').length;
 
+  // Business readiness logic (1 Vehicle + 1 Assigned Driver)
+  const hasVehicle = vehicles.length > 0;
+  const primaryVehicle = vehicles[0];
+  const assignedDriver = primaryVehicle
+    ? drivers.find((d) => d.assignedVehicleId === primaryVehicle.id)
+    : null;
+  const isBusinessReady = hasVehicle && Boolean(assignedDriver);
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* Top Welcome & Operations Status Header */}
@@ -68,6 +76,157 @@ export default function OwnerDashboardPage() {
           >
             Edit Tariffs
           </Link>
+        </div>
+      </div>
+
+      {/* BUSINESS READINESS & FLEET ONBOARDING STATUS CARD */}
+      <div className="bg-white rounded-3xl p-5 sm:p-6 border-2 border-slate-200 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2.5">
+            <span
+              className={`w-3 h-3 rounded-full ${
+                isBusinessReady ? 'bg-[#078A32] animate-pulse' : 'bg-amber-500'
+              }`}
+            />
+            <h2 className="text-sm font-black uppercase text-[#061B33] tracking-wide">
+              Business Readiness: {isBusinessReady ? 'Live & Operational' : 'Setup Required'}
+            </h2>
+          </div>
+
+          <span
+            className={`text-xs font-bold px-3 py-1 rounded-full w-fit ${
+              isBusinessReady
+                ? 'bg-emerald-100 text-emerald-800'
+                : 'bg-amber-100 text-amber-900'
+            }`}
+          >
+            {isBusinessReady
+              ? '✓ 1 Cab & Chauffeur Active'
+              : !hasVehicle
+              ? 'Step 1 of 2: Add Vehicle'
+              : 'Step 2 of 2: Assign Chauffeur'}
+          </span>
+        </div>
+
+        {/* 3-Step Visual Progress Bar */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* Step 1: Vehicle Listing (Max 1) */}
+          <div
+            className={`p-3.5 rounded-2xl border ${
+              hasVehicle
+                ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                : 'bg-amber-50/70 border-amber-300 text-amber-950'
+            } space-y-1.5`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                Step 1 • Fleet (1 Cab Limit)
+              </span>
+              {hasVehicle ? (
+                <CheckCircle2 className="w-4 h-4 text-[#078A32]" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-amber-600 animate-bounce" />
+              )}
+            </div>
+            <div className="text-xs font-bold">
+              {hasVehicle
+                ? `${primaryVehicle.make} ${primaryVehicle.model}`
+                : 'No Vehicle Listed (0/1)'}
+            </div>
+            <div className="text-[11px] text-slate-600">
+              {hasVehicle ? (
+                <span className="font-mono font-bold text-slate-800">
+                  {primaryVehicle.registrationNumber}
+                </span>
+              ) : (
+                <Link
+                  href="/owner/vehicles"
+                  className="text-amber-800 font-bold hover:underline inline-flex items-center gap-1"
+                >
+                  <span>Add Primary Cab →</span>
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {/* Step 2: Chauffeur Provisioning & Assignment */}
+          <div
+            className={`p-3.5 rounded-2xl border ${
+              assignedDriver
+                ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                : !hasVehicle
+                ? 'bg-slate-50 border-slate-200 text-slate-400'
+                : 'bg-amber-50/70 border-amber-300 text-amber-950'
+            } space-y-1.5`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                Step 2 • Chauffeur & Auth
+              </span>
+              {assignedDriver ? (
+                <CheckCircle2 className="w-4 h-4 text-[#078A32]" />
+              ) : (
+                <Users className="w-4 h-4 text-slate-400" />
+              )}
+            </div>
+            <div className="text-xs font-bold">
+              {assignedDriver
+                ? assignedDriver.name
+                : hasVehicle
+                ? 'Chauffeur Not Assigned'
+                : 'Awaiting Vehicle'}
+            </div>
+            <div className="text-[11px] text-slate-600">
+              {assignedDriver ? (
+                <span className="text-emerald-700 font-semibold">
+                  {assignedDriver.phone} • Login Provisioned
+                </span>
+              ) : hasVehicle ? (
+                <Link
+                  href="/owner/drivers"
+                  className="text-amber-800 font-bold hover:underline inline-flex items-center gap-1"
+                >
+                  <span>Assign Chauffeur →</span>
+                </Link>
+              ) : (
+                <span>Register vehicle first</span>
+              )}
+            </div>
+          </div>
+
+          {/* Step 3: Business Dispatch Operational */}
+          <div
+            className={`p-3.5 rounded-2xl border ${
+              isBusinessReady
+                ? 'bg-emerald-500 text-white border-emerald-600 shadow-xs'
+                : 'bg-slate-50 border-slate-200 text-slate-400'
+            } space-y-1.5`}
+          >
+            <div className="flex items-center justify-between">
+              <span
+                className={`text-[10px] font-black uppercase tracking-wider ${
+                  isBusinessReady ? 'text-emerald-100' : 'text-slate-500'
+                }`}
+              >
+                Step 3 • Dispatch Status
+              </span>
+              <ShieldCheck
+                className={`w-4 h-4 ${isBusinessReady ? 'text-white' : 'text-slate-400'}`}
+              />
+            </div>
+            <div className="text-xs font-black">
+              {isBusinessReady ? 'Ready for Bookings' : 'Setup Incomplete'}
+            </div>
+            <div
+              className={`text-[11px] ${
+                isBusinessReady ? 'text-emerald-100' : 'text-slate-500'
+              }`}
+            >
+              {isBusinessReady
+                ? '1 Cab + Chauffeur ready to serve Dhanbad riders'
+                : 'Complete Steps 1 & 2 to begin'}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -165,7 +324,7 @@ export default function OwnerDashboardPage() {
             </div>
           </div>
           <div className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-            {vehicles.length} / 2 Cabs
+            {vehicles.length} / 1 Cab
           </div>
           <div className="text-[11px] text-slate-500">
             Available:{' '}
@@ -259,56 +418,72 @@ export default function OwnerDashboardPage() {
         </div>
       </div>
 
-      {/* FLEET & DRIVER AVAILABILITY GLANCE */}
+      {/* FLEET & PRIMARY CAB AVAILABILITY GLANCE */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div>
             <h2 className="text-sm font-extrabold uppercase text-[#061B33]">
-              Fleet Status (Max 2 Vehicles)
+              Primary Cab Fleet Status (1 Vehicle Capacity)
             </h2>
             <span className="text-xs text-slate-500">
-              Active cabs available for assignment in Dhanbad
+              Active cab deployment for premium service in Dhanbad
             </span>
           </div>
           <Link href="/owner/vehicles" className="text-xs font-bold text-[#078A32] hover:underline">
-            Manage Fleet →
+            Manage Vehicle →
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {vehicles.map((v) => (
-            <div
-              key={v.id}
-              className="p-4 rounded-2xl border border-slate-200 bg-slate-50/60 flex items-center justify-between"
+        {vehicles.length === 0 ? (
+          <div className="p-8 text-center rounded-2xl bg-slate-50 border border-dashed border-slate-200 space-y-3">
+            <Car className="w-10 h-10 text-slate-300 mx-auto" />
+            <div className="text-xs font-bold text-slate-700">No primary vehicle registered yet</div>
+            <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+              Add your single primary cab to activate dispatch and assign your chauffeur.
+            </p>
+            <Link
+              href="/owner/vehicles"
+              className="inline-block bg-[#078A32] hover:bg-[#056B27] text-white font-bold px-4 py-2 rounded-xl text-xs shadow-xs"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-[#078A32] flex items-center justify-center font-bold">
-                  <Car className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-extrabold text-slate-900">
-                    {v.make} {v.model}
-                  </h4>
-                  <div className="text-xs font-mono font-bold text-slate-600 mt-0.5">
-                    {v.registrationNumber}
+              + Register Primary Cab Now
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {vehicles.map((v) => (
+              <div
+                key={v.id}
+                className="p-4 rounded-2xl border border-slate-200 bg-slate-50/60 flex items-center justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 text-[#078A32] flex items-center justify-center font-bold">
+                    <Car className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-extrabold text-slate-900">
+                      {v.make} {v.model}
+                    </h4>
+                    <div className="text-xs font-mono font-bold text-slate-600 mt-0.5">
+                      {v.registrationNumber}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="text-right">
-                <span
-                  className={`inline-block text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${
-                    v.status === 'AVAILABLE'
-                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                      : 'bg-amber-50 text-amber-800 border-amber-300'
-                  }`}
-                >
-                  {v.status}
-                </span>
+                <div className="text-right">
+                  <span
+                    className={`inline-block text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${
+                      v.status === 'AVAILABLE'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                        : 'bg-amber-50 text-amber-800 border-amber-300'
+                    }`}
+                  >
+                    {v.status}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
