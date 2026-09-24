@@ -139,6 +139,11 @@ export function subscribeToStore(callback: () => void): () => void {
   };
 }
 
+// Strip undefined fields recursively so Firestore setDoc never throws Unsupported field value: undefined
+function cleanForFirestore<T>(data: T): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(data));
+}
+
 function getLocalState(): LocalStoreState {
   if (typeof window === 'undefined') return DEFAULT_STATE;
   try {
@@ -186,7 +191,7 @@ export async function savePricingConfig(config: PricingConfig): Promise<void> {
   const updated = { ...config, updatedAt: new Date().toISOString() };
   if (db) {
     try {
-      await setDoc(doc(db, 'pricingConfig', 'default'), updated, { merge: true });
+      await setDoc(doc(db, 'pricingConfig', 'default'), cleanForFirestore(updated), { merge: true });
     } catch (err) {
       console.warn('Firestore pricing save fallback to local:', err);
     }
@@ -231,7 +236,7 @@ export async function saveVehicle(vehicle: Vehicle): Promise<{ success: boolean;
 
   if (db) {
     try {
-      await setDoc(doc(db, 'vehicles', vehicle.id), updatedVehicle, { merge: true });
+      await setDoc(doc(db, 'vehicles', vehicle.id), cleanForFirestore(updatedVehicle), { merge: true });
     } catch (err) {
       console.warn('Firestore vehicle save fallback to local:', err);
     }
@@ -283,7 +288,7 @@ export async function saveDriver(driver: Driver): Promise<void> {
 
   if (db) {
     try {
-      await setDoc(doc(db, 'drivers', driver.id), updatedDriver, { merge: true });
+      await setDoc(doc(db, 'drivers', driver.id), cleanForFirestore(updatedDriver), { merge: true });
     } catch (err) {
       console.warn('Firestore driver save fallback to local:', err);
     }
@@ -358,7 +363,7 @@ export async function saveBooking(booking: Booking): Promise<void> {
 
   if (db) {
     try {
-      await setDoc(doc(db, 'bookings', booking.id), updatedBooking, { merge: true });
+      await setDoc(doc(db, 'bookings', booking.id), cleanForFirestore(updatedBooking), { merge: true });
     } catch (err) {
       console.warn('Firestore booking save fallback to local:', err);
     }
@@ -380,7 +385,7 @@ export async function updateDriverLocation(location: DriverLocation): Promise<vo
 
   if (db) {
     try {
-      await setDoc(doc(db, 'activeTrips', location.bookingId), payload, { merge: true });
+      await setDoc(doc(db, 'activeTrips', location.bookingId), cleanForFirestore(payload), { merge: true });
     } catch (err) {
       console.warn('Firestore driver location fallback to local:', err);
     }
@@ -426,7 +431,7 @@ export async function addNotification(notification: Omit<InAppNotification, 'id'
 
   if (db) {
     try {
-      await setDoc(doc(db, 'notifications', id), item);
+      await setDoc(doc(db, 'notifications', id), cleanForFirestore(item));
     } catch (err) {
       console.warn('Firestore notification fallback:', err);
     }
@@ -465,7 +470,7 @@ export async function addBookingEvent(event: Omit<BookingEvent, 'id' | 'createdA
 
   if (db) {
     try {
-      await setDoc(doc(db, `bookings/${event.bookingId}/events`, id), newEvent);
+      await setDoc(doc(db, `bookings/${event.bookingId}/events`, id), cleanForFirestore(newEvent));
     } catch (e) {
       // fallback
     }
