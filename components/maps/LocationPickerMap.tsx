@@ -2,7 +2,21 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { LocationCoordinate } from '@/types';
-import { MapPin, Navigation, Crosshair, Sparkles, Check, Compass } from 'lucide-react';
+import {
+  MapPin,
+  Navigation,
+  Crosshair,
+  Sparkles,
+  Check,
+  Compass,
+  Search,
+  Maximize2,
+  RefreshCw,
+  Layers,
+  ArrowRight,
+  Info,
+} from 'lucide-react';
+import type * as LType from 'leaflet';
 
 interface Props {
   pickup: LocationCoordinate;
@@ -11,16 +25,20 @@ interface Props {
   onSelectDrop: (loc: LocationCoordinate) => void;
   activeTarget: 'pickup' | 'drop';
   setActiveTarget: (target: 'pickup' | 'drop') => void;
+  className?: string;
+  height?: string;
 }
 
-// Regional Popular Transit Hubs in and around Dhanbad
-const REGIONAL_LANDMARKS: { name: string; area: string; lat: number; lng: number }[] = [
-  { name: 'Dhanbad Junction Station', area: 'Station Road', lat: 23.7957, lng: 86.4304 },
-  { name: 'Bank More Hub', area: 'Commercial Centre', lat: 23.7915, lng: 86.4255 },
+// Popular Dhanbad & Regional Transit Hubs for instant 1-tap positioning
+const POPULAR_HUBS = [
+  { name: 'Dhanbad Junction', area: 'Station Road', lat: 23.7957, lng: 86.4304 },
+  { name: 'Bank More', area: 'Commercial Centre', lat: 23.7915, lng: 86.4255 },
   { name: 'IIT (ISM) Main Gate', area: 'Sardar Patel Nagar', lat: 23.8144, lng: 86.4412 },
   { name: 'Saraidhela / Steel Gate', area: 'Koyla Nagar Road', lat: 23.8219, lng: 86.4589 },
   { name: 'Memco More', area: 'NH-19 Junction', lat: 23.8341, lng: 86.4418 },
   { name: 'Govindpur GT Road', area: 'Highway Corridor', lat: 23.8385, lng: 86.5192 },
+  { name: 'Koyla Nagar', area: 'BCCL Township', lat: 23.8182, lng: 86.4674 },
+  { name: 'Hirapur Market', area: 'City Centre', lat: 23.8012, lng: 86.4385 },
   { name: 'Ranchi Airport (IXR)', area: 'Hinoo, Ranchi', lat: 23.3143, lng: 85.3216 },
   { name: 'Deoghar Airport (DGH)', area: 'Kunda, Deoghar', lat: 24.4439, lng: 86.7081 },
   { name: 'Durgapur Airport (RDP)', area: 'Andal, Durgapur', lat: 23.6231, lng: 87.2435 },
@@ -33,360 +51,652 @@ export const LocationPickerMap: React.FC<Props> = ({
   onSelectDrop,
   activeTarget,
   setActiveTarget,
+  className = '',
+  height = 'h-96 sm:h-[430px]',
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const [googleMapsActive, setGoogleMapsActive] = useState(false);
+  const mapInstanceRef = useRef<LType.Map | null>(null);
+  const pickupMarkerRef = useRef<LType.Marker | null>(null);
+  const dropMarkerRef = useRef<LType.Marker | null>(null);
+  const polylineRef = useRef<LType.Polyline | null>(null);
+
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [isGeocoding, setIsGeocoding] = useState(false);
   const [gpsDetecting, setGpsDetecting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<
+    { name: string; lat: number; lng: number }[]
+  >([]);
 
-  const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  // Reverse Geocoding helper (OSM Nominatim with timeout and clean formatting)
+  const reverseGeocode = async (lat: number, lng: number): Promise<string> => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+        {
+          headers: {
+            'Accept-Language': 'en',
+            'User-Agent': 'TravelBzarApp/1.0',
+          },
+        }
+      );
+      if (!res.ok) throw new Error('Geocoding service unavailable');
+      const data = await res.json();
 
-  // Real Google Maps Initialization if Key is present
+      if (data && data.address) {
+        const addr = data.address;
+        const parts: string[] = [];
+
+        // Prioritize building/amenity/road
+        if (data.name) parts.push(data.name);
+        else if (addr.road) parts.push(addr.road);
+
+        if (addr.suburb && !parts.includes(addr.suburb)) parts.push(addr.suburb);
+        if (addr.neighbourhood && !parts.includes(addr.neighbourhood)) parts.push(addr.neighbourhood);
+        if (addr.city || addr.town || addr.county) {
+          const c = addr.city || addr.town || addr.county;
+          if (!parts.includes(c)) parts.push(c);
+        }
+        if (addr.state && !parts.includes(addr.state)) parts.push(addr.state);
+        if (addr.postcode) parts.push(addr.postcode);
+
+        if (parts.length > 0) {
+          return parts.join(', ');
+        }
+      }
+
+      if (data && data.display_name) {
+        return data.display_name.split(',').slice(0, 4).join(', ');
+      }
+    } catch (err) {
+      console.info('Reverse geocode fallback to coords:', err);
+    }
+    return `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+  };
+
+  // Helper to create rich custom SVG DivIcons
+  const createMarkerIcon = (
+    L: typeof LType,
+    type: 'pickup' | 'drop',
+    isActive: boolean
+  ) => {
+    const isPickup = type === 'pickup';
+    const bgGradient = isPickup
+      ? 'from-[#078A32] to-[#42B900]'
+      : 'from-[#F0441D] to-[#D43612]';
+    const borderColor = isPickup ? '#078A32' : '#F0441D';
+    const label = isPickup ? 'A' : 'B';
+    const title = isPickup ? 'PICKUP' : 'DESTINATION';
+
+    const pulseHtml = isActive
+      ? `<span class="absolute -inset-2 rounded-full ${
+          isPickup ? 'bg-emerald-500/30' : 'bg-rose-500/30'
+        } animate-ping"></span>`
+      : '';
+
+    const html = `
+      <div class="relative flex flex-col items-center cursor-grab active:cursor-grabbing group">
+        <!-- Floating Label Pill -->
+        <div class="px-2 py-0.5 rounded-full text-[9px] font-black tracking-widest text-white shadow-md uppercase mb-1 ${
+          isPickup ? 'bg-[#078A32]' : 'bg-[#F0441D]'
+        } border border-white/80 whitespace-nowrap">
+          ${title}
+        </div>
+        
+        <!-- Pin Marker Body -->
+        <div class="relative w-8 h-8 rounded-full bg-gradient-to-tr ${bgGradient} text-white flex items-center justify-center font-black text-xs shadow-xl border-2 border-white ring-2 ring-black/10">
+          ${pulseHtml}
+          <span class="relative z-10 font-bold">${label}</span>
+        </div>
+
+        <!-- Pointer Needle -->
+        <div class="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[8px] border-t-white -mt-0.5 shadow-sm"></div>
+      </div>
+    `;
+
+    return L.divIcon({
+      html,
+      className: 'custom-visual-marker',
+      iconSize: [60, 60],
+      iconAnchor: [30, 56],
+    });
+  };
+
+  // Initialize Leaflet Map
   useEffect(() => {
-    if (!googleMapsApiKey || typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !mapContainerRef.current) return;
 
     let isMounted = true;
+
     const initMap = async () => {
-      try {
-        const win = window as unknown as {
-          google?: {
-            maps?: {
-              Map: new (el: HTMLElement, opts: unknown) => {
-                addListener: (event: string, handler: (e: { latLng: { lat: () => number; lng: () => number } }) => void) => void;
-                setCenter: (coords: { lat: number; lng: number }) => void;
-              };
-              Marker: new (opts: unknown) => { setPosition: (c: unknown) => void; setMap: (m: unknown) => void };
-              Geocoder: new () => {
-                geocode: (
-                  req: { location: { lat: number; lng: number } },
-                  cb: (results: { formatted_address?: string }[], status: string) => void
-                ) => void;
-              };
-            };
-          };
-        };
+      const L = (await import('leaflet')).default;
+      if (!isMounted || !mapContainerRef.current) return;
 
-        if (win.google?.maps && mapContainerRef.current) {
-          const maps = win.google.maps;
-          const centerCoords = activeTarget === 'pickup'
-            ? { lat: pickup.latitude, lng: pickup.longitude }
-            : { lat: drop.latitude, lng: drop.longitude };
+      // Clean existing instance if any
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
 
-          const map = new maps.Map(mapContainerRef.current, {
-            center: centerCoords,
-            zoom: 13,
-            mapTypeControl: false,
-            streetViewControl: false,
-            fullscreenControl: false,
-          });
+      // Default center: active target or Dhanbad Junction
+      const initialLat =
+        activeTarget === 'pickup' ? pickup.latitude : drop.latitude;
+      const initialLng =
+        activeTarget === 'pickup' ? pickup.longitude : drop.longitude;
 
-          const geocoder = new maps.Geocoder();
+      const map = L.map(mapContainerRef.current, {
+        center: [initialLat || 23.7957, initialLng || 86.4304],
+        zoom: 13,
+        zoomControl: false,
+        attributionControl: false,
+      });
 
-          map.addListener('click', (e: { latLng: { lat: () => number; lng: () => number } }) => {
-            const lat = e.latLng.lat();
-            const lng = e.latLng.lng();
-
-            geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-              const address =
-                status === 'OK' && results[0]?.formatted_address
-                  ? results[0].formatted_address
-                  : `Pinned Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
-
-              if (activeTarget === 'pickup') {
-                onSelectPickup({ address, latitude: lat, longitude: lng });
-              } else {
-                onSelectDrop({ address, latitude: lat, longitude: lng });
-              }
-            });
-          });
-
-          setGoogleMapsActive(true);
+      // High clarity CartoDB Voyager street tiles
+      L.tileLayer(
+        'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+        {
+          maxZoom: 19,
+          subdomains: 'abcd',
         }
-      } catch (err) {
-        console.info('Google Maps pointer notices:', err);
+      ).addTo(map);
+
+      // Attribution pill in bottom-right corner
+      L.control
+        .attribution({
+          position: 'bottomright',
+          prefix: '© OpenStreetMap • Travel BZAR',
+        })
+        .addTo(map);
+
+      // Zoom control in top-right
+      L.control.zoom({ position: 'topright' }).addTo(map);
+
+      // Create Pickup Marker (Draggable)
+      const pickupIcon = createMarkerIcon(L, 'pickup', activeTarget === 'pickup');
+      const pickupMarker = L.marker([pickup.latitude, pickup.longitude], {
+        icon: pickupIcon,
+        draggable: true,
+      }).addTo(map);
+
+      pickupMarker.on('dragend', async () => {
+        const pos = pickupMarker.getLatLng();
+        setIsGeocoding(true);
+        const resolvedAddress = await reverseGeocode(pos.lat, pos.lng);
+        setIsGeocoding(false);
+        onSelectPickup({
+          address: resolvedAddress,
+          latitude: pos.lat,
+          longitude: pos.lng,
+        });
+      });
+
+      // Create Drop Marker (Draggable)
+      const dropIcon = createMarkerIcon(L, 'drop', activeTarget === 'drop');
+      const dropMarker = L.marker([drop.latitude, drop.longitude], {
+        icon: dropIcon,
+        draggable: true,
+      }).addTo(map);
+
+      dropMarker.on('dragend', async () => {
+        const pos = dropMarker.getLatLng();
+        setIsGeocoding(true);
+        const resolvedAddress = await reverseGeocode(pos.lat, pos.lng);
+        setIsGeocoding(false);
+        onSelectDrop({
+          address: resolvedAddress,
+          latitude: pos.lat,
+          longitude: pos.lng,
+        });
+      });
+
+      // Connecting Polyline
+      const polyline = L.polyline(
+        [
+          [pickup.latitude, pickup.longitude],
+          [drop.latitude, drop.longitude],
+        ],
+        {
+          color: '#078A32',
+          weight: 4,
+          opacity: 0.85,
+          dashArray: '8, 8',
+        }
+      ).addTo(map);
+
+      // Click on Map to Drop or Move Marker
+      map.on('click', async (e: LType.LeafletMouseEvent) => {
+        const { lat, lng } = e.latlng;
+        setIsGeocoding(true);
+
+        if (activeTarget === 'pickup') {
+          pickupMarker.setLatLng([lat, lng]);
+          polyline.setLatLngs([
+            [lat, lng],
+            [drop.latitude, drop.longitude],
+          ]);
+          const resolved = await reverseGeocode(lat, lng);
+          setIsGeocoding(false);
+          onSelectPickup({
+            address: resolved,
+            latitude: lat,
+            longitude: lng,
+          });
+        } else {
+          dropMarker.setLatLng([lat, lng]);
+          polyline.setLatLngs([
+            [pickup.latitude, pickup.longitude],
+            [lat, lng],
+          ]);
+          const resolved = await reverseGeocode(lat, lng);
+          setIsGeocoding(false);
+          onSelectDrop({
+            address: resolved,
+            latitude: lat,
+            longitude: lng,
+          });
+        }
+      });
+
+      mapInstanceRef.current = map;
+      pickupMarkerRef.current = pickupMarker;
+      dropMarkerRef.current = dropMarker;
+      polylineRef.current = polyline;
+      setMapLoaded(true);
+
+      // Auto-fit both markers if valid
+      if (
+        pickup.latitude &&
+        pickup.longitude &&
+        drop.latitude &&
+        drop.longitude
+      ) {
+        const bounds = L.latLngBounds([
+          [pickup.latitude, pickup.longitude],
+          [drop.latitude, drop.longitude],
+        ]);
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
       }
     };
 
     initMap();
+
     return () => {
       isMounted = false;
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
     };
-  }, [googleMapsApiKey, activeTarget]);
+  }, []);
 
-  // Current Device GPS
+  // Update Markers and Polyline when pickup, drop, or activeTarget changes
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapLoaded) return;
+
+    const updateVisuals = async () => {
+      const L = (await import('leaflet')).default;
+
+      // Update Pickup Marker
+      if (pickupMarkerRef.current) {
+        pickupMarkerRef.current.setLatLng([pickup.latitude, pickup.longitude]);
+        pickupMarkerRef.current.setIcon(
+          createMarkerIcon(L, 'pickup', activeTarget === 'pickup')
+        );
+      }
+
+      // Update Drop Marker
+      if (dropMarkerRef.current) {
+        dropMarkerRef.current.setLatLng([drop.latitude, drop.longitude]);
+        dropMarkerRef.current.setIcon(
+          createMarkerIcon(L, 'drop', activeTarget === 'drop')
+        );
+      }
+
+      // Update Polyline
+      if (polylineRef.current) {
+        polylineRef.current.setLatLngs([
+          [pickup.latitude, pickup.longitude],
+          [drop.latitude, drop.longitude],
+        ]);
+      }
+    };
+
+    updateVisuals();
+  }, [pickup.latitude, pickup.longitude, drop.latitude, drop.longitude, activeTarget, mapLoaded]);
+
+  // Pan to Active Target
+  const panToActiveTarget = () => {
+    if (!mapInstanceRef.current) return;
+    const target = activeTarget === 'pickup' ? pickup : drop;
+    mapInstanceRef.current.flyTo([target.latitude, target.longitude], 14, {
+      duration: 1,
+    });
+  };
+
+  // Center on Both Points
+  const fitBothPoints = async () => {
+    if (!mapInstanceRef.current) return;
+    const L = (await import('leaflet')).default;
+    const bounds = L.latLngBounds([
+      [pickup.latitude, pickup.longitude],
+      [drop.latitude, drop.longitude],
+    ]);
+    mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+  };
+
+  // GPS Device Detection
   const handleDetectGPS = () => {
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser.');
+      alert('Geolocation is not supported by your device browser.');
       return;
     }
     setGpsDetecting(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         setGpsDetecting(false);
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        const address = `My GPS Location (${lat.toFixed(4)}, ${lng.toFixed(4)} • Dhanbad)`;
+
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.flyTo([lat, lng], 15, { duration: 1.2 });
+        }
+
+        setIsGeocoding(true);
+        const resolved = await reverseGeocode(lat, lng);
+        setIsGeocoding(false);
 
         if (activeTarget === 'pickup') {
-          onSelectPickup({ address, latitude: lat, longitude: lng });
+          onSelectPickup({
+            address: resolved,
+            latitude: lat,
+            longitude: lng,
+          });
         } else {
-          onSelectDrop({ address, latitude: lat, longitude: lng });
+          onSelectDrop({
+            address: resolved,
+            latitude: lat,
+            longitude: lng,
+          });
         }
       },
       (err) => {
         setGpsDetecting(false);
-        alert(`Location permission denied or unavailable: ${err.message}`);
+        alert(`Location permission denied: ${err.message}`);
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
 
-  // Click on Schematic Map canvas
-  const handleSchematicCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
+  // Select Preset Hub
+  const handleSelectPresetHub = (hub: (typeof POPULAR_HUBS)[0]) => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.flyTo([hub.lat, hub.lng], 15, { duration: 1 });
+    }
 
-    // Map normalized canvas coordinates to Dhanbad regional latitude & longitude
-    // Dhanbad region bounding box: lat ~ 23.75 to 23.86, lng ~ 86.38 to 86.54
-    const lat = 23.86 - y * 0.11;
-    const lng = 86.38 + x * 0.16;
-
-    // Find closest landmark for a user-friendly address name
-    let closest = REGIONAL_LANDMARKS[0];
-    let minD = 999999;
-    REGIONAL_LANDMARKS.forEach((lm) => {
-      const d = Math.hypot(lm.lat - lat, lm.lng - lng);
-      if (d < minD) {
-        minD = d;
-        closest = lm;
-      }
-    });
-
-    const address = `Pinned near ${closest.name} (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
-
+    const fullAddr = `${hub.name}, ${hub.area}, Dhanbad, Jharkhand`;
     if (activeTarget === 'pickup') {
-      onSelectPickup({ address, latitude: lat, longitude: lng });
+      onSelectPickup({
+        address: fullAddr,
+        latitude: hub.lat,
+        longitude: hub.lng,
+      });
     } else {
-      onSelectDrop({ address, latitude: lat, longitude: lng });
+      onSelectDrop({
+        address: fullAddr,
+        latitude: hub.lat,
+        longitude: hub.lng,
+      });
     }
   };
 
-  const handleSelectLandmark = (lm: typeof REGIONAL_LANDMARKS[0]) => {
-    const loc: LocationCoordinate = {
-      address: `${lm.name}, ${lm.area}, Dhanbad`,
-      latitude: lm.lat,
-      longitude: lm.lng,
-    };
-    if (activeTarget === 'pickup') {
-      onSelectPickup(loc);
-    } else {
-      onSelectDrop(loc);
+  // Search Address / Landmark
+  const handleSearchSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    // First check local Dhanbad hubs
+    const match = POPULAR_HUBS.find(
+      (h) =>
+        h.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        h.area.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    if (match) {
+      handleSelectPresetHub(match);
+      setSearchQuery('');
+      setSearchResults([]);
+      return;
     }
+
+    // Geocode online query via Nominatim
+    setIsSearching(true);
+    try {
+      const q = encodeURIComponent(`${searchQuery}, Jharkhand, India`);
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=4`,
+        {
+          headers: {
+            'Accept-Language': 'en',
+            'User-Agent': 'TravelBzarApp/1.0',
+          },
+        }
+      );
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        setSearchResults(
+          data.map((item) => ({
+            name: item.display_name.split(',').slice(0, 3).join(', '),
+            lat: parseFloat(item.lat),
+            lng: parseFloat(item.lon),
+          }))
+        );
+      } else {
+        alert(`No locations found for "${searchQuery}". Please try another landmark or click directly on the map.`);
+      }
+    } catch (err) {
+      console.error('Search failed:', err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSelectSearchResult = (result: { name: string; lat: number; lng: number }) => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.flyTo([result.lat, result.lng], 15, { duration: 1 });
+    }
+    if (activeTarget === 'pickup') {
+      onSelectPickup({
+        address: result.name,
+        latitude: result.lat,
+        longitude: result.lng,
+      });
+    } else {
+      onSelectDrop({
+        address: result.name,
+        latitude: result.lat,
+        longitude: result.lng,
+      });
+    }
+    setSearchQuery('');
+    setSearchResults([]);
   };
 
   return (
-    <div className="space-y-3">
-      {/* Top Controller: Pointer Target Switcher & GPS Button */}
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-[#061B33] text-white p-2.5 sm:p-3 rounded-2xl border border-slate-700/80 shadow-md">
-        {/* Toggle between Pickup and Drop Pointer */}
-        <div className="flex items-center gap-1.5 p-1 bg-[#041224] rounded-xl border border-slate-800">
+    <div className={`space-y-3 ${className}`}>
+      {/* 1. Target Selector Bar & GPS Action */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+        {/* Toggle Mode: Pickup vs Drop */}
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200 shadow-inner">
           <button
             type="button"
             onClick={() => setActiveTarget('pickup')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all ${
               activeTarget === 'pickup'
-                ? 'bg-[#078A32] text-white shadow-sm'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-[#078A32] text-white shadow-md'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
           >
-            <MapPin className="w-3.5 h-3.5 text-[#42B900]" />
-            <span>1. Set Pickup Pointer</span>
+            <MapPin className="w-3.5 h-3.5 text-white" />
+            <span>1. Set Pickup Point</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse ml-0.5" />
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTarget('drop')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all ${
               activeTarget === 'drop'
-                ? 'bg-[#F0441D] text-white shadow-sm'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-[#F0441D] text-white shadow-md'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
           >
-            <Crosshair className="w-3.5 h-3.5 text-rose-300" />
-            <span>2. Set Destination Pointer</span>
+            <Compass className="w-3.5 h-3.5 text-white" />
+            <span>2. Set Drop Destination</span>
+            <span className="w-2 h-2 rounded-full bg-rose-300 animate-pulse ml-0.5" />
           </button>
         </div>
 
-        {/* GPS Quick Action */}
-        <button
-          type="button"
-          onClick={handleDetectGPS}
-          disabled={gpsDetecting}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 transition-all cursor-pointer border border-slate-700 active:scale-95"
-        >
-          <Navigation className="w-3.5 h-3.5 text-[#42B900]" />
-          <span>{gpsDetecting ? 'Detecting GPS...' : 'Use My GPS'}</span>
-        </button>
-      </div>
-
-      {/* Interactive Map Surface */}
-      <div className="relative w-full h-72 sm:h-84 rounded-3xl overflow-hidden border-2 border-[#0B223D] bg-[#041224] shadow-inner select-none">
-        {/* Google Maps Container if enabled */}
-        {googleMapsActive && (
-          <div ref={mapContainerRef} className="w-full h-full" />
-        )}
-
-        {/* Interactive Schematic Regional Surface */}
-        {!googleMapsActive && (
-          <div
-            onClick={handleSchematicCanvasClick}
-            className="w-full h-full relative cursor-crosshair overflow-hidden"
+        {/* GPS & Fit Route Controls */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleDetectGPS}
+            disabled={gpsDetecting}
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-[#078A32] border border-emerald-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-xs"
+            title="Detect My GPS Location"
           >
-            {/* Dark Mode Regional Map Canvas with Dhanbad Grid */}
-            <div className="absolute inset-0 opacity-20 pointer-events-none">
-              <svg width="100%" height="100%">
-                <defs>
-                  <pattern id="pickergrid" width="35" height="35" patternUnits="userSpaceOnUse">
-                    <path d="M 35 0 L 0 0 0 35" fill="none" stroke="#38BDF8" strokeWidth="0.8" />
-                  </pattern>
-                </defs>
-                <rect width="100%" height="100%" fill="url(#pickergrid)" />
-              </svg>
-            </div>
+            <Navigation className={`w-3.5 h-3.5 ${gpsDetecting ? 'animate-spin' : ''}`} />
+            <span>{gpsDetecting ? 'Detecting...' : 'Use My GPS'}</span>
+          </button>
 
-            {/* Schematic Highway Corridors */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none" xmlns="http://www.w3.org/2000/svg">
-              {/* NH-19 GT Road */}
-              <line x1="0%" y1="20%" x2="100%" y2="40%" stroke="#1E293B" strokeWidth="6" />
-              <line x1="0%" y1="20%" x2="100%" y2="40%" stroke="#0284C7" strokeWidth="2" strokeDasharray="6 4" opacity="0.6" />
-              {/* Dhanbad - Bokaro / Ranchi Expressway */}
-              <line x1="30%" y1="90%" x2="45%" y2="25%" stroke="#1E293B" strokeWidth="5" />
-              <line x1="30%" y1="90%" x2="45%" y2="25%" stroke="#10B981" strokeWidth="2" strokeDasharray="4 4" opacity="0.5" />
-            </svg>
-
-            {/* Click instruction banner at top */}
-            <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between pointer-events-none">
-              <div className="bg-[#061B33]/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/80 text-[11px] text-white flex items-center gap-2 shadow-lg">
-                <Compass className="w-3.5 h-3.5 text-[#42B900] animate-spin-slow" />
-                <span>
-                  Tap anywhere on the regional map to set{' '}
-                  <strong className={activeTarget === 'pickup' ? 'text-[#42B900]' : 'text-rose-400'}>
-                    {activeTarget === 'pickup' ? 'PICKUP' : 'DESTINATION'}
-                  </strong>
-                </span>
-              </div>
-            </div>
-
-            {/* Landmark Nodes on Schematic Canvas */}
-            <div className="absolute inset-0 p-6 flex flex-wrap items-center justify-around pointer-events-auto">
-              {REGIONAL_LANDMARKS.slice(0, 6).map((lm) => {
-                const isSelectedPickup = Math.abs(pickup.latitude - lm.lat) < 0.005;
-                const isSelectedDrop = Math.abs(drop.latitude - lm.lat) < 0.005;
-
-                return (
-                  <button
-                    key={lm.name}
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSelectLandmark(lm);
-                    }}
-                    className={`m-1 px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all transform active:scale-95 shadow-md flex items-center gap-1.5 ${
-                      isSelectedPickup
-                        ? 'bg-emerald-600 text-white border-white ring-2 ring-emerald-400'
-                        : isSelectedDrop
-                        ? 'bg-rose-600 text-white border-white ring-2 ring-rose-400'
-                        : 'bg-[#0B223D]/90 text-slate-300 border-slate-700 hover:bg-[#122E52] hover:text-white'
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-slate-400" />
-                    <span>{lm.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Active Pinned Markers */}
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              {/* Pickup Pin */}
-              <div className="absolute top-1/3 left-1/4 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
-                <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg border-2 border-white animate-bounce-subtle">
-                  <MapPin className="w-4 h-4" />
-                </div>
-                <span className="text-[10px] font-black uppercase text-emerald-300 bg-black/80 px-2 py-0.5 rounded-md mt-1 border border-emerald-500/50">
-                  Pickup
-                </span>
-              </div>
-
-              {/* Connecting Line between Pointers */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-1 bg-gradient-to-r from-emerald-500 via-sky-400 to-rose-500 rounded-full opacity-70" />
-
-              {/* Destination Pin */}
-              <div className="absolute bottom-1/4 right-1/4 translate-x-1/2 translate-y-1/2 flex flex-col items-center">
-                <div className="w-8 h-8 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-lg border-2 border-white animate-pulse">
-                  <Crosshair className="w-4 h-4" />
-                </div>
-                <span className="text-[10px] font-black uppercase text-rose-300 bg-black/80 px-2 py-0.5 rounded-md mt-1 border border-rose-500/50">
-                  Destination
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
+          <button
+            type="button"
+            onClick={fitBothPoints}
+            className="inline-flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border border-slate-300 shadow-xs"
+            title="Show Full Route View"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Fit Route</span>
+          </button>
+        </div>
       </div>
 
-      {/* Selected Coordinates & Address Transparency Card */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-        {/* Pickup Details Card */}
-        <div
-          onClick={() => setActiveTarget('pickup')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            activeTarget === 'pickup'
-              ? 'bg-emerald-50/80 border-emerald-400 ring-2 ring-emerald-500/20 shadow-xs'
-              : 'bg-white border-slate-200 hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#078A32] flex items-center gap-1">
-              <MapPin className="w-3.5 h-3.5" />
-              <span>1. Pickup Point</span>
-            </span>
-            {activeTarget === 'pickup' && (
-              <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md">
-                Active Pointer
-              </span>
+      {/* 2. Real Visual Leaflet Map Container */}
+      <div className={`relative w-full ${height} rounded-3xl overflow-hidden border-2 border-slate-300 shadow-lg bg-slate-100`}>
+        {/* Leaflet Render Target */}
+        <div ref={mapContainerRef} className="w-full h-full z-0" />
+
+        {/* Integrated Floating Map Search Bar */}
+        <div className="absolute top-3 left-3 right-14 sm:right-auto sm:w-80 z-20">
+          <form onSubmit={handleSearchSubmit} className="relative shadow-lg">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search area, landmark or street..."
+              className="w-full pl-9 pr-8 py-2.5 rounded-2xl bg-white/95 backdrop-blur-md text-xs font-semibold text-slate-800 placeholder-slate-400 border border-slate-300/80 shadow-md focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
+            />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setSearchResults([]);
+                }}
+                className="absolute right-2.5 top-2.5 text-xs text-slate-400 hover:text-slate-700 font-bold"
+              >
+                ✕
+              </button>
             )}
+          </form>
+
+          {/* Search Dropdown Results */}
+          {searchResults.length > 0 && (
+            <div className="absolute top-12 left-0 right-0 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden z-30 divide-y divide-slate-100 animate-fade-in">
+              {searchResults.map((res, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => handleSelectSearchResult(res)}
+                  className="w-full text-left p-3 text-xs hover:bg-emerald-50 transition-colors flex items-start gap-2 text-slate-700"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-[#078A32] shrink-0 mt-0.5" />
+                  <span className="font-semibold line-clamp-2">{res.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Interactive Guide Pill in top center */}
+        <div className="absolute bottom-16 sm:bottom-4 left-3 right-3 sm:right-auto sm:max-w-md z-20 pointer-events-none">
+          <div className="bg-[#061B33]/90 backdrop-blur-md text-white px-4 py-2.5 rounded-2xl shadow-xl border border-slate-700/80 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5 truncate">
+              <span
+                className={`w-3 h-3 rounded-full shrink-0 ${
+                  activeTarget === 'pickup' ? 'bg-[#42B900]' : 'bg-[#F0441D]'
+                } animate-ping`}
+              />
+              <span className="truncate">
+                {isGeocoding ? (
+                  <span className="text-[#42B900] font-bold flex items-center gap-1.5">
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    Locating address from pin...
+                  </span>
+                ) : (
+                  <span>
+                    <strong>
+                      {activeTarget === 'pickup' ? 'Pickup' : 'Drop'}:
+                    </strong>{' '}
+                    <span className="text-slate-200">
+                      {(activeTarget === 'pickup' ? pickup.address : drop.address) || 'Click map to place pin'}
+                    </span>
+                  </span>
+                )}
+              </span>
+            </div>
+
+            <span className="text-[10px] uppercase font-bold text-slate-400 shrink-0 hidden sm:inline">
+              Drag pin to refine
+            </span>
           </div>
-          <p className="font-extrabold text-slate-900 line-clamp-1">{pickup.address}</p>
-          <span className="text-[10px] text-slate-400 font-mono">
-            {pickup.latitude.toFixed(4)}, {pickup.longitude.toFixed(4)}
+        </div>
+
+        {/* Instructions banner */}
+        <div className="absolute top-16 left-3 z-10 hidden sm:block">
+          <div className="bg-white/90 backdrop-blur-xs px-2.5 py-1 rounded-lg border border-slate-200 text-[10px] font-bold text-slate-700 shadow-xs flex items-center gap-1">
+            <Info className="w-3 h-3 text-[#078A32]" />
+            <span>Tap anywhere to place visual marker • Drag marker to adjust</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Quick 1-Tap Dhanbad Landmark Chips */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+            <Sparkles className="w-3 h-3 text-[#078A32]" />
+            <span>Quick Dhanbad Transit Landmarks (Tap to Pin):</span>
+          </span>
+          <span className="text-[10px] text-slate-400 font-semibold">
+            Sets active {activeTarget} marker
           </span>
         </div>
 
-        {/* Drop Details Card */}
-        <div
-          onClick={() => setActiveTarget('drop')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            activeTarget === 'drop'
-              ? 'bg-rose-50/80 border-rose-400 ring-2 ring-rose-500/20 shadow-xs'
-              : 'bg-white border-slate-200 hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-700 flex items-center gap-1">
-              <Crosshair className="w-3.5 h-3.5" />
-              <span>2. Destination Drop</span>
-            </span>
-            {activeTarget === 'drop' && (
-              <span className="text-[9px] font-bold text-rose-800 bg-rose-100 px-2 py-0.5 rounded-md">
-                Active Pointer
-              </span>
-            )}
-          </div>
-          <p className="font-extrabold text-slate-900 line-clamp-1">{drop.address}</p>
-          <span className="text-[10px] text-slate-400 font-mono">
-            {drop.latitude.toFixed(4)}, {drop.longitude.toFixed(4)}
-          </span>
+        <div className="flex flex-wrap gap-1.5">
+          {POPULAR_HUBS.map((hub) => (
+            <button
+              key={hub.name}
+              type="button"
+              onClick={() => handleSelectPresetHub(hub)}
+              className="text-xs bg-white hover:bg-emerald-50 hover:border-emerald-300 text-slate-800 font-bold px-3 py-1.5 rounded-xl border border-slate-200 shadow-xs transition-all active:scale-95 flex items-center gap-1"
+            >
+              <MapPin className="w-3 h-3 text-slate-400 group-hover:text-[#078A32]" />
+              <span>{hub.name}</span>
+            </button>
+          ))}
         </div>
       </div>
     </div>
