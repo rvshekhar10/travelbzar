@@ -83,7 +83,7 @@ export const LiveDriverMap: React.FC<Props> = ({
               <span className="text-xs font-black">A</span>
             </div>
             <span className="text-[10px] text-slate-300 font-bold block mt-1 truncate max-w-[90px]">
-              {pickup.address.split(',')[0]}
+              {(pickup?.address || 'Pickup').split(',')[0]}
             </span>
           </div>
 
@@ -115,7 +115,7 @@ export const LiveDriverMap: React.FC<Props> = ({
               <span className="text-xs font-black">B</span>
             </div>
             <span className="text-[10px] text-slate-300 font-bold block mt-1 truncate max-w-[90px]">
-              {drop.address.split(',')[0]}
+              {(drop?.address || 'Drop').split(',')[0]}
             </span>
           </div>
         </div>

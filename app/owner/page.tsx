@@ -378,7 +378,7 @@ export default function OwnerDashboardPage() {
                     <span className="font-bold text-[#078A32]">{trip.driverName || 'Assigned'}</span>
                   </div>
                   <div className="text-[11px] text-slate-500 truncate">
-                    {trip.pickup.address.split(',')[0]} → {trip.drop.address.split(',')[0]}
+                    {(trip.pickup?.address || 'Pickup').split(',')[0]} → {(trip.drop?.address || 'Drop').split(',')[0]}
                   </div>
                 </Link>
               ))}

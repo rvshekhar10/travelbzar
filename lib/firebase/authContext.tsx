@@ -162,7 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         let appUserData: AppUser = {
           id: cred.user.uid,
           role: 'customer', // default role
-          name: cred.user.displayName || email.split('@')[0],
+          name: cred.user.displayName || (email || 'user').split('@')[0],
           email: cred.user.email || email,
           status: 'active',
           createdAt: new Date().toISOString(),
@@ -194,7 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const fallbackUser: AppUser = {
       id: `usr-${Date.now()}`,
       role: 'customer',
-      name: email.split('@')[0],
+      name: (email || 'user').split('@')[0],
       email: email,
       status: 'active',
       createdAt: new Date().toISOString(),

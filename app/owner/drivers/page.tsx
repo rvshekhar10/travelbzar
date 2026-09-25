@@ -142,16 +142,23 @@ export default function OwnerDriversPage() {
 
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 rounded-2xl bg-[#061B33] text-white flex items-center justify-center font-bold text-xl shadow-md">
-                  {d.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                  {(d.name || 'Chauffeur')
+                    .trim()
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .map((n) => n[0])
+                    .join('')
+                    .toUpperCase()
+                    .slice(0, 2) || 'DR'}
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900">{d.name}</h3>
+                  <h3 className="text-base font-black text-slate-900">{d.name || 'Chauffeur'}</h3>
                   <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
                     <Phone className="w-3 h-3 text-[#078A32]" />
-                    <span>{d.phone}</span>
+                    <span>{d.phone || 'No phone'}</span>
                   </div>
                   <div className="text-[11px] text-slate-400 mt-0.5">
-                    DL: {d.licenseNumber} (Valid: {d.licenseExpiry})
+                    DL: {d.licenseNumber || 'N/A'} (Valid: {d.licenseExpiry || 'N/A'})
                   </div>
                 </div>
               </div>
@@ -175,7 +182,7 @@ export default function OwnerDriversPage() {
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                 <span className="flex items-center gap-1">
                   <Mail className="w-3.5 h-3.5" />
-                  <span>Login: {d.email}</span>
+                  <span>Login: {d.email || 'N/A'}</span>
                 </span>
                 <span className="text-[11px] font-bold text-[#078A32]">Auth Provisioned ✓</span>
               </div>

@@ -54,8 +54,8 @@ export const OwnerSidebar: React.FC = () => {
               key={item.href}
               href={item.href}
               className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${isActive
-                  ? 'bg-[#078A32] text-white font-semibold shadow-md'
-                  : 'text-slate-300 hover:bg-[#0B223D] hover:text-white'
+                ? 'bg-[#078A32] text-white font-semibold shadow-md'
+                : 'text-slate-300 hover:bg-[#0B223D] hover:text-white'
                 }`}
             >
               <div className="flex items-center gap-3">
@@ -76,7 +76,7 @@ export const OwnerSidebar: React.FC = () => {
       <div className="p-4 m-3 rounded-xl bg-[#0B223D] border border-slate-700/60 text-xs space-y-1.5">
         <div className="flex items-center gap-1.5 text-[#42B900] font-semibold">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Fleet Capacity: 2 Cabs</span>
+          <span>Fleet Capacity: 1 Cab</span>
         </div>
         <p className="text-slate-400 leading-relaxed text-[11px]">
           Conflict engine auto-enforces 30-min buffer between trips.

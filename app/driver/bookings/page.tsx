@@ -52,7 +52,7 @@ export default function DriverBookingsListPage() {
                   {b.customerName} ({b.customerPhone})
                 </div>
                 <div className="text-slate-600 truncate max-w-md">
-                  {b.pickup.address.split(',')[0]} → {b.drop.address.split(',')[0]}
+                  {(b.pickup?.address || 'Pickup').split(',')[0]} → {(b.drop?.address || 'Drop').split(',')[0]}
                 </div>
                 <div className="text-[11px] text-slate-400">
                   {b.bookingDate} at {b.pickupTime} IST • {b.bookingType.replace('_', ' ')}

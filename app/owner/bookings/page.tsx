@@ -156,8 +156,8 @@ export default function OwnerBookingsManagementPage() {
                 </div>
 
                 <div className="text-slate-600 truncate max-w-xl">
-                  <strong className="text-slate-900">Route:</strong> {b.pickup.address.split(',')[0]} →{' '}
-                  {b.drop.address.split(',')[0]}
+                  <strong className="text-slate-900">Route:</strong> {(b.pickup?.address || 'Pickup').split(',')[0]} →{' '}
+                  {(b.drop?.address || 'Drop').split(',')[0]}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4 text-slate-500 text-[11px] pt-1">

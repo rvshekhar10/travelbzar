@@ -86,8 +86,8 @@ export async function checkBookingConflict(
   const bufferMinutes = 30;
 
   // Convert target window to epoch minutes
-  const [h, m] = pickupTime.split(':').map(Number);
-  const targetStart = new Date(`${bookingDate}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`).getTime();
+  const [h, m] = (pickupTime || '00:00').split(':').map(Number);
+  const targetStart = new Date(`${bookingDate}T${String(h || 0).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}:00`).getTime();
   const targetEnd = targetStart + (durationMinutes + bufferMinutes) * 60 * 1000;
 
   for (const b of allBookings) {
@@ -101,8 +101,8 @@ export async function checkBookingConflict(
 
     if (!isSameVehicle && !isSameDriver) continue;
 
-    const [bh, bm] = b.pickupTime.split(':').map(Number);
-    const existingStart = new Date(`${b.bookingDate}T${String(bh).padStart(2, '0')}:${String(bm).padStart(2, '0')}:00`).getTime();
+    const [bh, bm] = (b.pickupTime || '00:00').split(':').map(Number);
+    const existingStart = new Date(`${b.bookingDate}T${String(bh || 0).padStart(2, '0')}:${String(bm || 0).padStart(2, '0')}:00`).getTime();
     const existingDuration = b.estimatedDurationMinutes || 120;
     const existingEnd = existingStart + (existingDuration + bufferMinutes) * 60 * 1000;
 
