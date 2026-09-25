@@ -193,13 +193,15 @@ export const LocationPickerMap: React.FC<Props> = ({
       });
 
       // High clarity CartoDB Voyager street tiles
-      L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-        {
-          maxZoom: 19,
-          subdomains: 'abcd',
-        }
-      ).addTo(map);
+      const cartoKey = process.env.NEXT_PUBLIC_CARTO_API_KEY;
+      const tileUrl = cartoKey
+        ? `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?api_key=${cartoKey}`
+        : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+
+      L.tileLayer(tileUrl, {
+        maxZoom: 19,
+        subdomains: 'abcd',
+      }).addTo(map);
 
       // Attribution pill in bottom-right corner
       L.control
