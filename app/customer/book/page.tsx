@@ -12,6 +12,7 @@ import { calculateFare } from '@/services/fareService';
 import { createNewBooking } from '@/services/bookingService';
 import { getCurrentDeviceLocation } from '@/services/locationService';
 import { MapView } from '@/components/maps/MapView';
+import { LocationPickerMap } from '@/components/maps/LocationPickerMap';
 import { FareBreakdown } from '@/components/booking/FareBreakdown';
 import {
   Car,
@@ -36,10 +37,11 @@ import {
 function BookCabContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, login } = useAuth();
+  const { user, login, registerCustomer } = useAuth();
   const { pricing } = usePricing();
   const { vehicles, loading: loadingVehicles } = useVehicles();
   const primaryVehicle = vehicles[0];
+  const [activePointerTarget, setActivePointerTarget] = useState<'pickup' | 'drop'>('pickup');
 
   // Booking Stepper state: 1: TYPE, 2: LOCATIONS, 3: DATE & TIME, 4: FARE & ROUTE, 5: CONFIRM
   const [step, setStep] = useState<number>(1);
@@ -185,21 +187,35 @@ function BookCabContent() {
   const handleConfirmBooking = async () => {
     setAuthError(null);
 
-    // If user is not authenticated, require login with provisioned credentials
+    // If user is not authenticated, support registration or login
     let activeUser = user;
     if (!activeUser) {
+      if (!customerName || !customerPhone) {
+        setAuthError('Please enter passenger full name and contact phone number.');
+        return;
+      }
       if (!authEmail || !authPassword) {
-        setAuthError('Please enter your email and password to sign in. Customer accounts are provisioned by Travel BZAR.');
+        setAuthError('Please enter your email address and password.');
         return;
       }
       setSubmitting(true);
-      const loginRes = await login(authEmail, authPassword);
-      if (!loginRes.success || !loginRes.user) {
-        setAuthError(loginRes.error || 'Invalid credentials. Please verify your email and password.');
-        setSubmitting(false);
-        return;
+      if (authTab === 'signup') {
+        const regRes = await registerCustomer(customerName, authEmail, authPassword, customerPhone);
+        if (!regRes.success || !regRes.user) {
+          setAuthError(regRes.error || 'Failed to create account. Please verify details.');
+          setSubmitting(false);
+          return;
+        }
+        activeUser = regRes.user;
+      } else {
+        const loginRes = await login(authEmail, authPassword);
+        if (!loginRes.success || !loginRes.user) {
+          setAuthError(loginRes.error || 'Invalid credentials. Please verify your email and password.');
+          setSubmitting(false);
+          return;
+        }
+        activeUser = loginRes.user;
       }
-      activeUser = loginRes.user;
     }
 
     setSubmitting(true);
@@ -524,8 +540,29 @@ function BookCabContent() {
           <div>
             <h2 className="text-lg font-black text-[#061B33]">Step 2: Pickup & Drop Off</h2>
             <p className="text-xs text-slate-500 mt-1">
-              Provide exact addresses. You can also pick from popular Dhanbad transit hubs.
+              Select pickup and destination on the map pointer or enter exact addresses.
             </p>
+          </div>
+
+          {/* Interactive Map Location Pointer */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-[#078A32]" />
+                <span>Interactive Map Location Pointer</span>
+              </span>
+              <span className="text-[10px] text-slate-500 font-semibold">
+                Tap map to set points or select transit hubs
+              </span>
+            </div>
+            <LocationPickerMap
+              pickup={pickup}
+              drop={drop}
+              onSelectPickup={setPickup}
+              onSelectDrop={setDrop}
+              activeTarget={activePointerTarget}
+              setActiveTarget={setActivePointerTarget}
+            />
           </div>
 
           {/* Airport Selection if Airport Booking */}
@@ -901,15 +938,40 @@ function BookCabContent() {
           {/* Customer Authentication Requirement */}
           {!user ? (
             <div className="bg-emerald-50/70 border-2 border-emerald-400/80 rounded-2xl p-5 space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-emerald-200">
-                <User className="w-5 h-5 text-[#078A32]" />
-                <span className="font-black text-sm text-[#061B33]">
-                  Sign In to Request Cab
-                </span>
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-emerald-200">
+                <div className="flex items-center gap-2">
+                  <User className="w-5 h-5 text-[#078A32]" />
+                  <span className="font-black text-sm text-[#061B33]">
+                    {authTab === 'signup' ? 'Create Rider Account & Request' : 'Sign In to Your Account'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1 bg-white p-0.5 rounded-xl border border-slate-200 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => { setAuthTab('signup'); setAuthError(null); }}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                      authTab === 'signup' ? 'bg-[#078A32] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    New Rider
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAuthTab('signin'); setAuthError(null); }}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                      authTab === 'signin' ? 'bg-[#061B33] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Sign In
+                  </button>
+                </div>
               </div>
 
               <p className="text-xs text-slate-600 leading-relaxed">
-                Customer accounts are provisioned by Travel BZAR administration. Sign in with your registered email and password to place your booking request and receive live dispatch updates.
+                {authTab === 'signup'
+                  ? 'Create your customer account with your email and password below. Your ride will be dispatched immediately.'
+                  : 'Enter your registered email and password to place your booking request.'}
               </p>
 
               {authError && (
@@ -936,17 +998,13 @@ function BookCabContent() {
                   <input
                     type="password"
                     required
+                    minLength={6}
                     value={authPassword}
                     onChange={(e) => setAuthPassword(e.target.value)}
                     placeholder="••••••••"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
                   />
                 </div>
-              </div>
-
-              <div className="text-[11px] text-slate-500 pt-1">
-                Don&apos;t have an account yet? Contact Travel BZAR at{' '}
-                <strong className="text-slate-800">+91 9007210697</strong> to get provisioned.
               </div>
             </div>
           ) : (

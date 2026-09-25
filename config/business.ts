@@ -30,6 +30,7 @@ export const BUSINESS_CONFIG = {
     phone: process.env.NEXT_PUBLIC_BUSINESS_PHONE || '+91 9007210697',
     whatsapp: process.env.NEXT_PUBLIC_BUSINESS_WHATSAPP || '+91 9007210697',
     email: process.env.NEXT_PUBLIC_BUSINESS_EMAIL || 'support@travelbzar.com',
+    upiId: process.env.NEXT_PUBLIC_BUSINESS_UPI || '9007210697@upi',
     supportAvailability: '24x7 Customer Support',
     bookingNotice: 'Advance Booking Recommended',
   },

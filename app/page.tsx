@@ -14,6 +14,11 @@ import {
   ArrowRight,
   MessageSquare,
   Car,
+  UserPlus,
+  Radio,
+  QrCode,
+  KeyRound,
+  Banknote,
 } from 'lucide-react';
 import { BUSINESS_CONFIG } from '@/config/business';
 import { PricingCard } from '@/components/pricing/PricingCard';
@@ -96,6 +101,104 @@ export default function HomePage() {
               <span className="text-xs sm:text-sm font-bold text-slate-200">
                 CLEAN & WELL MAINTAINED CABS
               </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 5-Step Full Transparency Rider Journey Section */}
+      <section className="bg-gradient-to-b from-slate-50 to-white py-14 sm:py-20 px-4 sm:px-6 lg:px-8 border-b border-slate-200">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center max-w-3xl mx-auto mb-12 sm:mb-16">
+            <span className="text-xs font-black uppercase tracking-widest text-[#078A32] bg-emerald-50 px-3.5 py-1.5 rounded-full border border-emerald-200">
+              Minimal Full Transparency Mode
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-black text-[#061B33] mt-3">
+              How Travel BZAR Works: Simple, Direct & Honest
+            </h2>
+            <p className="text-sm sm:text-base text-slate-600 mt-2">
+              From discovering fixed tariffs to tracking your chauffeur’s garage departure and 1-tap UPI payment.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 sm:gap-6 relative">
+            {/* Step 1 */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all space-y-3 relative group">
+              <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-black text-sm">
+                01
+              </div>
+              <h3 className="text-base font-black text-slate-900">Learn & Register</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Review our zero-surge rate card. Create a rider account in under 30 seconds with phone & email.
+              </p>
+              <div className="pt-2">
+                <Link href="/register" className="text-xs font-bold text-[#078A32] hover:underline flex items-center gap-1">
+                  <span>Register Free</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            </div>
+
+            {/* Step 2 */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all space-y-3 relative group">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-700 text-white flex items-center justify-center font-black text-sm">
+                02
+              </div>
+              <h3 className="text-base font-black text-slate-900">Point on Map</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Select your Dhanbad pickup and destination with our interactive map pointer and instant GPS detection.
+              </p>
+              <div className="pt-2">
+                <Link href="/customer/book" className="text-xs font-bold text-[#078A32] hover:underline flex items-center gap-1">
+                  <span>Set Location</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            </div>
+
+            {/* Step 3 */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all space-y-3 relative group">
+              <div className="w-12 h-12 rounded-2xl bg-[#061B33] text-white flex items-center justify-center font-black text-sm">
+                03
+              </div>
+              <h3 className="text-base font-black text-slate-900">Connect Chauffeur</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Upon confirmation, connect directly via Phone or WhatsApp and track cab departure from our Dhanbad garage.
+              </p>
+              <div className="pt-2 text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                <Radio className="w-3.5 h-3.5" />
+                <span>Live GPS Tracker</span>
+              </div>
+            </div>
+
+            {/* Step 4 */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all space-y-3 relative group">
+              <div className="w-12 h-12 rounded-2xl bg-amber-600 text-white flex items-center justify-center font-black text-sm">
+                04
+              </div>
+              <h3 className="text-base font-black text-slate-900">Board with PIN</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Driver arrives outside. Check vehicle registration number and share your 4-digit ride OTP to start trip.
+              </p>
+              <div className="pt-2 text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Verified Passenger OTP</span>
+              </div>
+            </div>
+
+            {/* Step 5 */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all space-y-3 relative group">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black text-sm">
+                05
+              </div>
+              <h3 className="text-base font-black text-slate-900">Pay Cash / UPI</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Arrive smoothly. Pay driver in Cash or scan dynamic UPI QR code (GPay / PhonePe / Paytm). Get instant receipt.
+              </p>
+              <div className="pt-2 text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                <QrCode className="w-3.5 h-3.5" />
+                <span>Instant QR & Invoice</span>
+              </div>
             </div>
           </div>
         </div>

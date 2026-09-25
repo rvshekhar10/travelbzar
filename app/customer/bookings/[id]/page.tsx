@@ -28,9 +28,15 @@ import {
   Sparkles,
   MapPin,
   XCircle,
+  MessageSquare,
+  Copy,
+  Check,
+  RotateCcw,
+  Smartphone,
 } from 'lucide-react';
 import { cancelBooking } from '@/services/bookingService';
 import { useAuth } from '@/lib/firebase/authContext';
+import { BUSINESS_CONFIG } from '@/config/business';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -42,6 +48,8 @@ export default function CustomerBookingDetailPage({ params }: PageProps) {
   const { booking, loading, refresh } = useBooking(id);
   const { location: driverLocation } = useDriverLocation(booking?.id);
   const [cancelling, setCancelling] = useState(false);
+  const [copiedUpi, setCopiedUpi] = useState(false);
+  const [activePayTab, setActivePayTab] = useState<'upi' | 'cash'>('upi');
 
   // Auto-poll/refresh for status changes while finding driver or active trip
   useEffect(() => {
@@ -213,16 +221,50 @@ export default function CustomerBookingDetailPage({ params }: PageProps) {
               </p>
             </div>
 
-            {booking.driverPhone && (
-              <a
-                href={`tel:${booking.driverPhone.replace(/\s+/g, '')}`}
-                className="flex items-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white text-xs sm:text-sm font-black px-5 py-3 rounded-2xl shadow-lg transition-all shrink-0 self-stretch sm:self-auto justify-center"
-              >
-                <Phone className="w-4 h-4" />
-                <span>Call Chauffeur</span>
-              </a>
-            )}
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0 self-stretch sm:self-auto">
+              {booking.driverPhone && (
+                <>
+                  <a
+                    href={`tel:${booking.driverPhone.replace(/\s+/g, '')}`}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white text-xs sm:text-sm font-black px-4 py-3 rounded-2xl shadow-lg transition-all"
+                  >
+                    <Phone className="w-4 h-4" />
+                    <span>Call</span>
+                  </a>
+                  <a
+                    href={`https://wa.me/${booking.driverPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                      `Hello ${booking.driverName || 'Chauffeur'}, I am ${booking.customerName}, customer for booking #${booking.bookingNumber}. My pickup is: ${booking.pickup.address}.`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20BA5A] active:scale-95 text-white text-xs sm:text-sm font-black px-4 py-3 rounded-2xl shadow-lg transition-all"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    <span>WhatsApp</span>
+                  </a>
+                </>
+              )}
+            </div>
           </div>
+
+          {/* Driver Arrived - Boarding Verification PIN */}
+          {booking.status === 'DRIVER_ARRIVED' && (
+            <div className="bg-gradient-to-r from-emerald-600 to-[#078A32] text-white p-5 rounded-3xl shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4 border-2 border-emerald-400">
+              <div className="space-y-1 text-center sm:text-left">
+                <span className="text-[11px] font-black uppercase tracking-widest text-emerald-100 flex items-center gap-1.5 justify-center sm:justify-start">
+                  <ShieldCheck className="w-4 h-4" />
+                  Boarding Verification PIN
+                </span>
+                <h3 className="text-lg font-black text-white">Share Ride PIN with Chauffeur</h3>
+                <p className="text-xs text-emerald-100">
+                  Verify car number <span className="font-mono font-bold text-white bg-emerald-800/60 px-2 py-0.5 rounded">{booking.vehicleRegistrationNumber}</span> and provide this PIN to {booking.driverName} before stepping in.
+                </p>
+              </div>
+              <div className="bg-white text-[#061B33] px-6 py-3.5 rounded-2xl shadow-lg font-mono text-3xl font-black tracking-widest text-center shrink-0 border-2 border-emerald-200">
+                {booking.bookingNumber ? booking.bookingNumber.replace(/[^0-9]/g, '').slice(-4).padStart(4, '7') : '4821'}
+              </div>
+            </div>
+          )}
 
           {/* Assigned Driver & Vehicle Details Card */}
           <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -372,22 +414,24 @@ export default function CustomerBookingDetailPage({ params }: PageProps) {
                   Ride Concluded Successfully
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Thank you for travelling with Travel BZAR.
+                  Thank you for travelling with Travel BZAR Dhanbad.
                 </p>
               </div>
             </div>
 
-            <Link
-              href={`/owner/receipt/${booking.id}`}
-              className="flex items-center gap-2 bg-[#061B33] hover:bg-[#0B223D] active:scale-95 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-all self-start sm:self-auto"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Digital Receipt / Invoice</span>
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/owner/receipt/${booking.id}`}
+                className="flex items-center gap-2 bg-[#061B33] hover:bg-[#0B223D] active:scale-95 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-all self-start sm:self-auto"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Invoice / Receipt</span>
+              </Link>
+            </div>
           </div>
 
           {/* Payment Prompt & Collection Box */}
-          <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-300 rounded-3xl p-6 shadow-sm space-y-4">
+          <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-300 rounded-3xl p-6 shadow-sm space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <span className="text-xs font-extrabold uppercase tracking-wider text-amber-900 block">
@@ -396,17 +440,20 @@ export default function CustomerBookingDetailPage({ params }: PageProps) {
                 <div className="text-3xl sm:text-4xl font-black text-slate-900 font-mono mt-0.5">
                   ₹{booking.fare.totalFare.toLocaleString('en-IN')}
                 </div>
+                <span className="text-[11px] text-slate-600 font-semibold block mt-0.5">
+                  Transparent Upfront Tariff • 0 Surge • Tolls & Parking included as per actuals
+                </span>
               </div>
 
               {/* Real-time Payment Status Pill */}
               <div className="self-start sm:self-auto">
                 {booking.paymentStatus === 'PAID' ? (
-                  <div className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-black shadow-md">
+                  <div className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-xs font-black shadow-md">
                     <CheckCircle2 className="w-4 h-4" />
                     <span>Payment Received ({booking.paymentMethod || 'Cash/UPI'})</span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-xl text-xs font-black shadow-md animate-pulse">
+                  <div className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2.5 rounded-xl text-xs font-black shadow-md animate-pulse">
                     <Clock className="w-4 h-4" />
                     <span>Awaiting Chauffeur Confirmation</span>
                   </div>
@@ -414,33 +461,137 @@ export default function CustomerBookingDetailPage({ params }: PageProps) {
               </div>
             </div>
 
-            <p className="text-xs text-slate-700 leading-relaxed">
-              Please pay <strong>₹{booking.fare.totalFare.toLocaleString('en-IN')}</strong> directly to Chauffeur{' '}
-              <strong>{booking.driverName || 'your assigned chauffeur'}</strong>. You can pay via <strong>Cash</strong> or by scanning their <strong>UPI QR code</strong>.
-            </p>
-
-            {/* Payment Modes */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-              <div className="bg-white p-4 rounded-2xl border border-amber-200 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-[#078A32] flex items-center justify-center shrink-0">
-                  <Banknote className="w-5 h-5" />
-                </div>
-                <div>
-                  <strong className="text-xs font-black text-slate-900 block">Option 1: Cash Payment</strong>
-                  <span className="text-[11px] text-slate-500">Hand exact cash directly to the chauffeur.</span>
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-amber-200 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
-                  <QrCode className="w-5 h-5" />
-                </div>
-                <div>
-                  <strong className="text-xs font-black text-slate-900 block">Option 2: UPI / QR Code</strong>
-                  <span className="text-[11px] text-slate-500">Scan driver QR on PhonePe / GPay / Paytm.</span>
-                </div>
-              </div>
+            {/* Payment Mode Selector Tabs */}
+            <div className="flex items-center gap-2 p-1 bg-amber-200/50 rounded-2xl w-full sm:w-fit">
+              <button
+                type="button"
+                onClick={() => setActivePayTab('upi')}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${
+                  activePayTab === 'upi'
+                    ? 'bg-white text-slate-900 shadow-md'
+                    : 'text-amber-950 hover:bg-amber-200/60'
+                }`}
+              >
+                <QrCode className="w-4 h-4 text-emerald-600" />
+                <span>Instant UPI / QR Code</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivePayTab('cash')}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${
+                  activePayTab === 'cash'
+                    ? 'bg-white text-slate-900 shadow-md'
+                    : 'text-amber-950 hover:bg-amber-200/60'
+                }`}
+              >
+                <Banknote className="w-4 h-4 text-emerald-600" />
+                <span>Cash to Chauffeur</span>
+              </button>
             </div>
+
+            {/* UPI Option */}
+            {activePayTab === 'upi' && (
+              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-amber-200 shadow-sm space-y-5 animate-fade-in">
+                <div className="flex flex-col sm:flex-row items-center gap-6">
+                  {/* Dynamic QR Code */}
+                  <div className="bg-white p-3 rounded-2xl border-2 border-slate-200 shadow-inner flex flex-col items-center shrink-0">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
+                        `upi://pay?pa=${BUSINESS_CONFIG.contact.upiId || '9007210697@upi'}&pn=Travel%20Bzar&am=${booking.fare.totalFare}&cu=INR&tn=Ride%20${booking.bookingNumber}`
+                      )}`}
+                      alt="Travel Bzar UPI Payment QR"
+                      className="w-40 h-40 object-contain rounded-lg"
+                    />
+                    <span className="text-[10px] font-mono text-slate-400 mt-2">Scan with GPay / PhonePe / Paytm</span>
+                  </div>
+
+                  {/* UPI Details & Mobile Actions */}
+                  <div className="space-y-3 flex-1 text-center sm:text-left">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900">Instant UPI Payment</h4>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Scan the dynamic QR code above using any Indian UPI app or use the 1-tap app launch below.
+                      </p>
+                    </div>
+
+                    {/* Direct UPI Intent Link for Mobile */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                      <a
+                        href={`upi://pay?pa=${BUSINESS_CONFIG.contact.upiId || '9007210697@upi'}&pn=Travel%20Bzar&am=${booking.fare.totalFare}&cu=INR&tn=Ride%20${booking.bookingNumber}`}
+                        className="flex items-center justify-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white text-xs font-black px-4 py-3 rounded-xl shadow-md transition-all"
+                      >
+                        <Smartphone className="w-4 h-4" />
+                        <span>Pay ₹{booking.fare.totalFare.toLocaleString('en-IN')} via UPI App</span>
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(BUSINESS_CONFIG.contact.upiId || '9007210697@upi');
+                          setCopiedUpi(true);
+                          setTimeout(() => setCopiedUpi(false), 2000);
+                        }}
+                        className="flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-3 py-3 rounded-xl transition-all"
+                      >
+                        {copiedUpi ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Copied UPI ID!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copy UPI: {BUSINESS_CONFIG.contact.upiId || '9007210697@upi'}</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                      💡 Once your UPI payment is sent, chauffeur {booking.driverName} will verify on their driver terminal and this page will instantly update to PAID.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Cash Option */}
+            {activePayTab === 'cash' && (
+              <div className="bg-white p-5 rounded-2xl border border-amber-200 shadow-sm space-y-3 animate-fade-in">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-100 text-[#078A32] flex items-center justify-center shrink-0">
+                    <Banknote className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900">Cash Payment Instructions</h4>
+                    <p className="text-xs text-slate-500">
+                      Please hand exact cash of <strong>₹{booking.fare.totalFare.toLocaleString('en-IN')}</strong> directly to Chauffeur {booking.driverName || 'your chauffeur'}.
+                    </p>
+                  </div>
+                </div>
+                <div className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  Chauffeur will mark receipt on their mobile console immediately upon receiving cash. You can print or download your digital tax invoice above anytime.
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Re-Booking & Return Ride Shortcuts */}
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <Link
+              href={`/customer/book?type=LOCAL_CITY`}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#061B33] hover:bg-[#0B223D] active:scale-95 text-white font-bold text-xs sm:text-sm px-6 py-3.5 rounded-2xl shadow-md transition-all"
+            >
+              <RotateCcw className="w-4 h-4 text-[#42B900]" />
+              <span>Book Another Ride / Return</span>
+            </Link>
+
+            <Link
+              href="/customer/bookings"
+              className="w-full sm:w-auto text-center text-xs font-bold text-slate-600 hover:text-slate-900 py-2 sm:py-0"
+            >
+              View All Ride Histories →
+            </Link>
           </div>
         </div>
       )}

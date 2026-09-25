@@ -118,9 +118,15 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="pt-3 border-t border-slate-100 text-center text-xs text-slate-500">
-            Customer and driver accounts are managed and provisioned by Travel BZAR administration. For assistance, contact support at{' '}
-            <strong className="text-slate-800">+91 9007210697</strong>.
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+            <span className="text-slate-600">New to Travel BZAR?</span>
+            <Link
+              href="/register"
+              className="text-[#078A32] font-black hover:underline flex items-center gap-1"
+            >
+              <span>Create Rider Account</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
         </div>
       </div>

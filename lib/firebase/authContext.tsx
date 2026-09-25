@@ -16,6 +16,12 @@ interface AuthContextType {
   role: UserRole | null;
   loading: boolean;
   login: (email: string, pass: string) => Promise<{ success: boolean; user?: AppUser; error?: string }>;
+  registerCustomer: (
+    name: string,
+    email: string,
+    pass: string,
+    phone: string
+  ) => Promise<{ success: boolean; user?: AppUser; error?: string }>;
   logout: () => Promise<void>;
   updateUserProfile: (data: Partial<AppUser>) => Promise<void>;
 }
@@ -183,6 +189,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const registerCustomer = async (
+    name: string,
+    email: string,
+    pass: string,
+    phone: string
+  ): Promise<{ success: boolean; user?: AppUser; error?: string }> => {
+    if (!auth) {
+      return { success: false, error: 'Authentication service is initializing.' };
+    }
+    try {
+      const res = await createUserWithEmailAndPassword(auth, email.trim(), pass);
+      const uid = res.user.uid;
+      const newUser: AppUser = {
+        id: uid,
+        role: 'customer',
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        phone: phone.trim(),
+        status: 'active',
+        createdAt: new Date().toISOString(),
+      };
+
+      if (db) {
+        try {
+          await setDoc(doc(db, 'users', uid), newUser, { merge: true });
+        } catch (dbErr) {
+          console.warn('Could not save user profile to Firestore:', dbErr);
+        }
+      }
+
+      setUser(newUser);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newUser));
+      }
+
+      return { success: true, user: newUser };
+    } catch (err: unknown) {
+      let errorMsg = 'Failed to register account.';
+      if (err && typeof err === 'object' && 'code' in err) {
+        const code = (err as { code: string }).code;
+        if (code === 'auth/email-already-in-use') {
+          errorMsg = 'This email is already registered. Please sign in instead.';
+        } else if (code === 'auth/weak-password') {
+          errorMsg = 'Password must be at least 6 characters.';
+        } else if (code === 'auth/invalid-email') {
+          errorMsg = 'Please provide a valid email address.';
+        } else if (code === 'auth/network-request-failed') {
+          errorMsg = 'Network request failed. Please check your internet connection.';
+        }
+      }
+      return { success: false, error: errorMsg };
+    }
+  };
+
   const logout = async () => {
     if (auth) {
       try {
@@ -220,6 +280,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: user?.role || null,
         loading,
         login,
+        registerCustomer,
         logout,
         updateUserProfile,
       }}
