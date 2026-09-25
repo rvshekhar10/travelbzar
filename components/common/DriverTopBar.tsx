@@ -35,7 +35,7 @@ export const DriverTopBar: React.FC = () => {
         {/* Left: Brand & Chauffeur Duty Tag */}
         <div className="flex items-center gap-2.5">
           <Link href="/driver" className="flex items-center gap-2">
-            <TravelBzarLogo size="sm" variant="light" showTagline={false} />
+            <TravelBzarLogo size="sm" variant="light" showTagline={false} clickable={false} />
             <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-md border border-emerald-400/20">
               <Car className="w-3 h-3" />
               <span>Chauffeur</span>

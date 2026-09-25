@@ -6,6 +6,7 @@ interface LogoProps {
   variant?: 'light' | 'dark';
   showTagline?: boolean;
   clickable?: boolean;
+  href?: string;
 }
 
 export const TravelBzarLogo: React.FC<LogoProps> = ({
@@ -13,6 +14,7 @@ export const TravelBzarLogo: React.FC<LogoProps> = ({
   variant = 'light',
   showTagline = true,
   clickable = true,
+  href = '/',
 }) => {
   const isLight = variant === 'light';
 
@@ -90,7 +92,7 @@ export const TravelBzarLogo: React.FC<LogoProps> = ({
 
   if (clickable) {
     return (
-      <Link href="/" className="inline-block transition-opacity hover:opacity-95">
+      <Link href={href} className="inline-block transition-opacity hover:opacity-95">
         {content}
       </Link>
     );

@@ -35,7 +35,7 @@ export const OwnerTopBar: React.FC = () => {
         {/* Left: Brand & Operations Hub Emblem */}
         <div className="flex items-center gap-3">
           <Link href="/owner" className="flex items-center gap-2">
-            <TravelBzarLogo size="sm" variant="light" showTagline={false} />
+            <TravelBzarLogo size="sm" variant="light" showTagline={false} clickable={false} />
             <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-wider text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-md border border-amber-400/20">
               <ShieldCheck className="w-3 h-3" />
               <span>Admin HQ</span>
