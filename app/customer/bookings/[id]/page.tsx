@@ -416,7 +416,7 @@ export default function CustomerBookingDetailPage({ params }: PageProps) {
 
             <p className="text-xs text-slate-700 leading-relaxed">
               Please pay <strong>₹{booking.fare.totalFare.toLocaleString('en-IN')}</strong> directly to Chauffeur{' '}
-              <strong>{booking.driverName || 'Rajesh Kumar'}</strong>. You can pay via <strong>Cash</strong> or by scanning their <strong>UPI QR code</strong>.
+              <strong>{booking.driverName || 'your assigned chauffeur'}</strong>. You can pay via <strong>Cash</strong> or by scanning their <strong>UPI QR code</strong>.
             </p>
 
             {/* Payment Modes */}

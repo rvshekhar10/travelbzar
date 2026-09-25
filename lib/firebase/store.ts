@@ -5,7 +5,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
-  onSnapshot,
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -20,11 +20,12 @@ import {
   PricingConfig,
   Vehicle,
   AppUser,
+  UserRole,
 } from '@/types';
 import { DEFAULT_PRICING_CONFIG } from '@/config/business';
 
-// Local storage key for fallback persistence
-const LOCAL_STORAGE_KEY = 'travelbzar_poc_data_v1';
+// Local storage key for fallback persistence only
+const LOCAL_STORAGE_KEY = 'travelbzar_clean_store_v2';
 
 interface LocalStoreState {
   users: Record<string, AppUser>;
@@ -34,71 +35,15 @@ interface LocalStoreState {
   bookings: Record<string, Booking>;
   notifications: Record<string, InAppNotification>;
   events: Record<string, BookingEvent[]>;
-  locations: Record<string, DriverLocation>; // key: bookingId
+  locations: Record<string, DriverLocation>;
 }
 
+// Clean initial state with ZERO pre-fed mock data
 const DEFAULT_STATE: LocalStoreState = {
-  users: {
-    'user-owner-1': {
-      id: 'user-owner-1',
-      role: 'owner',
-      name: 'Travel BZAR Owner',
-      email: 'owner@travelbzar.com',
-      phone: '+91 9007210697',
-      status: 'active',
-      createdAt: new Date().toISOString(),
-    },
-    'user-driver-1': {
-      id: 'user-driver-1',
-      role: 'driver',
-      name: 'Rajesh Kumar (Chauffeur)',
-      email: 'driver@travelbzar.com',
-      phone: '+91 9876543210',
-      status: 'active',
-      createdAt: new Date().toISOString(),
-    },
-    'user-customer-1': {
-      id: 'user-customer-1',
-      role: 'customer',
-      name: 'Amit Sharma',
-      email: 'customer@travelbzar.com',
-      phone: '+91 9431100000',
-      status: 'active',
-      createdAt: new Date().toISOString(),
-    },
-  },
+  users: {},
   pricing: DEFAULT_PRICING_CONFIG,
-  vehicles: {
-    'veh-1': {
-      id: 'veh-1',
-      registrationNumber: 'JH-10-BX-1001',
-      make: 'Hyundai',
-      model: 'Venue SX',
-      variant: 'Turbo Petrol',
-      color: 'Polar White',
-      vehicleType: 'Compact SUV',
-      year: 2024,
-      status: 'AVAILABLE',
-      currentDriverId: 'drv-1',
-      notes: 'Pristine AC cab, verified condition',
-      createdAt: new Date().toISOString(),
-    },
-  },
-  drivers: {
-    'drv-1': {
-      id: 'drv-1',
-      name: 'Rajesh Kumar',
-      phone: '+91 9876543210',
-      email: 'driver@travelbzar.com',
-      licenseNumber: 'JH10-2018-0045892',
-      licenseExpiry: '2030-05-15',
-      status: 'ACTIVE',
-      assignedVehicleId: 'veh-1',
-      totalTrips: 142,
-      rating: 4.9,
-      createdAt: new Date().toISOString(),
-    },
-  },
+  vehicles: {},
+  drivers: {},
   bookings: {},
   notifications: {},
   events: {},
@@ -106,7 +51,6 @@ const DEFAULT_STATE: LocalStoreState = {
 };
 
 // Listeners map for in-app reactive events
-type ListenerCallback = (data: unknown) => void;
 const listeners = new Set<() => void>();
 
 function notifyListeners() {
@@ -134,6 +78,11 @@ function cleanForFirestore<T>(data: T): Record<string, unknown> {
 function getLocalState(): LocalStoreState {
   if (typeof window === 'undefined') return DEFAULT_STATE;
   try {
+    // Purge old mock storage if present
+    if (localStorage.getItem('travelbzar_poc_data_v1')) {
+      localStorage.removeItem('travelbzar_poc_data_v1');
+    }
+
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (!raw) {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(DEFAULT_STATE));
@@ -167,7 +116,7 @@ export async function getPricingConfig(): Promise<PricingConfig> {
         return snap.data() as PricingConfig;
       }
     } catch (err) {
-      console.info('Using local pricing store:', err);
+      console.info('Pricing fetch notice:', err);
     }
   }
   const state = getLocalState();
@@ -189,18 +138,16 @@ export async function savePricingConfig(config: PricingConfig): Promise<void> {
 }
 
 // ==========================================
-// VEHICLES (Max 2 Vehicles)
+// VEHICLES (Controlled strictly by Owner in Firestore - Max 1 Vehicle)
 // ==========================================
 export async function getVehicles(): Promise<Vehicle[]> {
   if (db) {
     try {
       const q = query(collection(db, 'vehicles'));
       const snap = await getDocs(q);
-      if (!snap.empty) {
-        return snap.docs.map((d) => d.data() as Vehicle);
-      }
+      return snap.docs.map((d) => d.data() as Vehicle);
     } catch (err) {
-      console.info('Using local vehicles store:', err);
+      console.warn('Firestore getVehicles error, falling back to local cache:', err);
     }
   }
   const state = getLocalState();
@@ -208,14 +155,6 @@ export async function getVehicles(): Promise<Vehicle[]> {
 }
 
 export async function saveVehicle(vehicle: Vehicle): Promise<{ success: boolean; error?: string }> {
-  const state = getLocalState();
-  const currentVehicles = Object.values(state.vehicles);
-
-  // Check max 1 vehicle rule
-  if (!state.vehicles[vehicle.id] && currentVehicles.length >= 1) {
-    return { success: false, error: 'Fleet limit reached. Currently only 1 active vehicle is permitted.' };
-  }
-
   const updatedVehicle: Vehicle = {
     ...vehicle,
     updatedAt: new Date().toISOString(),
@@ -223,10 +162,31 @@ export async function saveVehicle(vehicle: Vehicle): Promise<{ success: boolean;
 
   if (db) {
     try {
+      const q = query(collection(db, 'vehicles'));
+      const snap = await getDocs(q);
+      const otherVehicles = snap.docs.filter((d) => d.id !== vehicle.id);
+      if (otherVehicles.length >= 1) {
+        return {
+          success: false,
+          error: 'Fleet limit reached. Only 1 active vehicle is permitted. Delete the current cab to register another.',
+        };
+      }
+
       await setDoc(doc(db, 'vehicles', vehicle.id), cleanForFirestore(updatedVehicle), { merge: true });
+      const state = getLocalState();
+      state.vehicles[vehicle.id] = updatedVehicle;
+      saveLocalState(state);
+      return { success: true };
     } catch (err) {
-      console.warn('Firestore vehicle save fallback to local:', err);
+      console.error('Firestore saveVehicle error:', err);
+      return { success: false, error: 'Failed to save vehicle to Firestore.' };
     }
+  }
+
+  const state = getLocalState();
+  const currentVehicles = Object.values(state.vehicles).filter((v) => v.id !== vehicle.id);
+  if (currentVehicles.length >= 1) {
+    return { success: false, error: 'Fleet limit reached. Only 1 active vehicle is permitted.' };
   }
 
   state.vehicles[vehicle.id] = updatedVehicle;
@@ -237,15 +197,22 @@ export async function saveVehicle(vehicle: Vehicle): Promise<{ success: boolean;
 export async function deleteVehicle(vehicleId: string): Promise<void> {
   if (db) {
     try {
-      const { deleteDoc } = await import('firebase/firestore');
       await deleteDoc(doc(db, 'vehicles', vehicleId));
+
+      // Unassign vehicle from drivers in Firestore
+      const driversSnap = await getDocs(
+        query(collection(db, 'drivers'), where('assignedVehicleId', '==', vehicleId))
+      );
+      for (const dDoc of driversSnap.docs) {
+        await updateDoc(doc(db, 'drivers', dDoc.id), { assignedVehicleId: null });
+      }
     } catch (err) {
-      console.warn('Firestore delete vehicle fallback:', err);
+      console.error('Firestore deleteVehicle error:', err);
     }
   }
+
   const state = getLocalState();
   delete state.vehicles[vehicleId];
-  // Unassign from drivers
   Object.values(state.drivers).forEach((d) => {
     if (d.assignedVehicleId === vehicleId) {
       d.assignedVehicleId = undefined;
@@ -255,18 +222,16 @@ export async function deleteVehicle(vehicleId: string): Promise<void> {
 }
 
 // ==========================================
-// DRIVERS
+// DRIVERS (Controlled strictly by Owner in Firestore)
 // ==========================================
 export async function getDrivers(): Promise<Driver[]> {
   if (db) {
     try {
       const q = query(collection(db, 'drivers'));
       const snap = await getDocs(q);
-      if (!snap.empty) {
-        return snap.docs.map((d) => d.data() as Driver);
-      }
+      return snap.docs.map((d) => d.data() as Driver);
     } catch (err) {
-      console.info('Using local drivers store:', err);
+      console.warn('Firestore getDrivers error, falling back to local cache:', err);
     }
   }
   const state = getLocalState();
@@ -282,47 +247,115 @@ export async function saveDriver(driver: Driver): Promise<void> {
   if (db) {
     try {
       await setDoc(doc(db, 'drivers', driver.id), cleanForFirestore(updatedDriver), { merge: true });
+
+      // Ensure user record exists with driver role
+      await setDoc(
+        doc(db, 'users', driver.id),
+        cleanForFirestore({
+          id: driver.id,
+          role: 'driver',
+          name: driver.name,
+          email: driver.email,
+          phone: driver.phone,
+          status: 'active',
+          createdAt: driver.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }),
+        { merge: true }
+      );
+
+      // If assigned to vehicle, update vehicle in Firestore
+      if (driver.assignedVehicleId) {
+        await setDoc(
+          doc(db, 'vehicles', driver.assignedVehicleId),
+          { currentDriverId: driver.id, updatedAt: new Date().toISOString() },
+          { merge: true }
+        );
+      }
     } catch (err) {
-      console.warn('Firestore driver save fallback to local:', err);
+      console.error('Firestore saveDriver error:', err);
     }
   }
 
   const state = getLocalState();
   state.drivers[driver.id] = updatedDriver;
+  saveLocalState(state);
+}
 
-  // 1. Provision user auth record for driver login
-  const driverUserId = `user-${driver.id}`;
-  const driverUser: AppUser = {
-    id: driverUserId,
-    role: 'driver',
-    name: driver.name,
-    email: driver.email,
-    phone: driver.phone,
-    status: 'active',
-    createdAt: new Date().toISOString(),
-  };
-  state.users[driverUserId] = driverUser;
-
+export async function deleteDriver(driverId: string): Promise<void> {
   if (db) {
     try {
-      await setDoc(doc(db, 'users', driverUserId), cleanForFirestore(driverUser), { merge: true });
-    } catch (e) {
-      // non-fatal
-    }
-  }
+      await deleteDoc(doc(db, 'drivers', driverId));
+      await deleteDoc(doc(db, 'users', driverId));
 
-  // 2. Link driver to assigned vehicle if provided
-  if (driver.assignedVehicleId && state.vehicles[driver.assignedVehicleId]) {
-    state.vehicles[driver.assignedVehicleId].currentDriverId = driver.id;
-    if (db) {
-      try {
-        await setDoc(doc(db, 'vehicles', driver.assignedVehicleId), { currentDriverId: driver.id }, { merge: true });
-      } catch (e) {
-        // non-fatal
+      // Unassign driver from vehicle
+      const vehSnap = await getDocs(
+        query(collection(db, 'vehicles'), where('currentDriverId', '==', driverId))
+      );
+      for (const vDoc of vehSnap.docs) {
+        await updateDoc(doc(db, 'vehicles', vDoc.id), { currentDriverId: null });
       }
+    } catch (err) {
+      console.error('Firestore deleteDriver error:', err);
     }
   }
 
+  const state = getLocalState();
+  delete state.drivers[driverId];
+  delete state.users[driverId];
+  Object.values(state.vehicles).forEach((v) => {
+    if (v.currentDriverId === driverId) {
+      v.currentDriverId = undefined;
+    }
+  });
+  saveLocalState(state);
+}
+
+// ==========================================
+// USERS / CUSTOMERS (Controlled by Owner in Firestore)
+// ==========================================
+export async function getUsers(role?: UserRole): Promise<AppUser[]> {
+  if (db) {
+    try {
+      let q = query(collection(db, 'users'));
+      if (role) {
+        q = query(collection(db, 'users'), where('role', '==', role));
+      }
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => d.data() as AppUser);
+    } catch (err) {
+      console.error('Firestore getUsers error:', err);
+    }
+  }
+  const state = getLocalState();
+  const allUsers = Object.values(state.users);
+  return role ? allUsers.filter((u) => u.role === role) : allUsers;
+}
+
+export async function saveAppUser(user: AppUser): Promise<void> {
+  const updated = { ...user, updatedAt: new Date().toISOString() };
+  if (db) {
+    try {
+      await setDoc(doc(db, 'users', user.id), cleanForFirestore(updated), { merge: true });
+    } catch (err) {
+      console.error('Firestore saveAppUser error:', err);
+    }
+  }
+  const state = getLocalState();
+  state.users[user.id] = updated;
+  saveLocalState(state);
+}
+
+export async function deleteAppUser(userId: string): Promise<void> {
+  if (db) {
+    try {
+      await deleteDoc(doc(db, 'users', userId));
+    } catch (err) {
+      console.error('Firestore deleteAppUser error:', err);
+    }
+  }
+  const state = getLocalState();
+  delete state.users[userId];
   saveLocalState(state);
 }
 
@@ -343,11 +376,9 @@ export async function getBookings(filters?: {
         q = query(collection(db, 'bookings'), where('driverId', '==', filters.driverId));
       }
       const snap = await getDocs(q);
-      if (!snap.empty) {
-        return snap.docs.map((d) => d.data() as Booking);
-      }
+      return snap.docs.map((d) => d.data() as Booking);
     } catch (err) {
-      console.info('Using local bookings store:', err);
+      console.warn('Firestore getBookings error, falling back to local cache:', err);
     }
   }
 
@@ -375,7 +406,7 @@ export async function getBookingById(bookingId: string): Promise<Booking | null>
         return snap.data() as Booking;
       }
     } catch (err) {
-      console.info('Using local booking lookup:', err);
+      console.info('Firestore booking lookup notice:', err);
     }
   }
   const state = getLocalState();
@@ -496,8 +527,23 @@ export async function getDriverContinuousLocation(driverId: string): Promise<Dri
 // IN-APP NOTIFICATIONS
 // ==========================================
 export async function getNotifications(userId: string): Promise<InAppNotification[]> {
+  const targetIds = Array.from(new Set([userId, 'owner', 'all'])).filter(Boolean);
+  if (db) {
+    try {
+      const q = query(
+        collection(db, 'notifications'),
+        where('userId', 'in', targetIds)
+      );
+      const snap = await getDocs(q);
+      return snap.docs
+        .map((d) => d.data() as InAppNotification)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } catch {
+      // fallback
+    }
+  }
   const state = getLocalState();
-  const list = Object.values(state.notifications).filter((n) => n.userId === userId || n.userId === 'all');
+  const list = Object.values(state.notifications).filter((n) => targetIds.includes(n.userId));
   return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
@@ -566,6 +612,17 @@ export async function addBookingEvent(event: Omit<BookingEvent, 'id' | 'createdA
 }
 
 export async function getBookingEvents(bookingId: string): Promise<BookingEvent[]> {
+  if (db) {
+    try {
+      const q = query(collection(db, `bookings/${bookingId}/events`), orderBy('createdAt', 'asc'));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        return snap.docs.map((d) => d.data() as BookingEvent);
+      }
+    } catch {
+      // fallback
+    }
+  }
   const state = getLocalState();
   return state.events[bookingId] || [];
 }

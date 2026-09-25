@@ -8,7 +8,7 @@ import { Bell, ArrowRight } from 'lucide-react';
 
 export default function DriverNotificationsPage() {
   const { user } = useAuth();
-  const { notifications, unreadCount, markAsRead, loading } = useNotifications(user?.id || 'drv-1');
+  const { notifications, unreadCount, markAsRead, loading } = useNotifications(user?.id);
 
   return (
     <div className="py-6 sm:py-8 px-4 sm:px-6 max-w-4xl mx-auto space-y-6">

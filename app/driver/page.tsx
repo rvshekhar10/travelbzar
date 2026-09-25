@@ -70,7 +70,7 @@ export default function DriverDashboardPage() {
 
   // Driver trips
   const driverBookings = bookings.filter(
-    (b) => !b.driverId || b.driverId === user?.id || b.driverId === 'drv-1'
+    (b) => !b.driverId || b.driverId === user?.id
   );
 
   // 1. Current Active Trip (En route, arrived, or started)
@@ -90,13 +90,13 @@ export default function DriverDashboardPage() {
   const actor = {
     name: user?.name || 'Chauffeur',
     role: 'driver' as const,
-    id: user?.id || 'drv-1',
+    id: user?.id || '',
   };
 
   const handleAcceptRide = async (bookingId: string) => {
     setAcceptingId(bookingId);
     try {
-      await acceptBookingByDriver(bookingId, user?.id || 'drv-1');
+      await acceptBookingByDriver(bookingId, user?.id || '');
       await refresh();
     } catch (err) {
       console.error('Failed to accept ride:', err);
@@ -172,7 +172,7 @@ export default function DriverDashboardPage() {
   const handleConfirmArrivedAtGarage = async () => {
     setActionLoading(true);
     try {
-      await returnVehicleToGarage(user?.id || 'drv-1', primaryVehicle?.id);
+      await returnVehicleToGarage(user?.id || '', primaryVehicle?.id);
       setIsReturningToGarage(false);
       await refresh();
     } finally {
@@ -193,15 +193,17 @@ export default function DriverDashboardPage() {
               <div className="text-[10px] font-black uppercase tracking-wider text-[#42B900]">
                 Chauffeur Console
               </div>
-              <h1 className="text-xl sm:text-2xl font-black">{user?.name || 'Rajesh Chauffeur'}</h1>
+              <h1 className="text-xl sm:text-2xl font-black">{user?.name || 'Verified Chauffeur'}</h1>
               <div className="text-xs text-slate-300 mt-0.5">
                 Primary Cab:{' '}
                 <strong className="text-white">
-                  {primaryVehicle ? `${primaryVehicle.make} ${primaryVehicle.model}` : 'Hyundai Venue'}
+                  {primaryVehicle ? `${primaryVehicle.make} ${primaryVehicle.model}` : 'Unassigned'}
                 </strong>{' '}
-                <span className="font-mono text-emerald-400 font-bold">
-                  ({primaryVehicle?.registrationNumber || 'JH-10-BX-4421'})
-                </span>
+                {primaryVehicle?.registrationNumber && (
+                  <span className="font-mono text-emerald-400 font-bold">
+                    ({primaryVehicle.registrationNumber})
+                  </span>
+                )}
               </div>
             </div>
           </div>

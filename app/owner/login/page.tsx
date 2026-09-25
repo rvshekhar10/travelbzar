@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/authContext';
 import { TravelBzarLogo } from '@/components/common/TravelBzarLogo';
@@ -8,14 +8,14 @@ import { ShieldCheck, Lock, Mail, AlertCircle, ArrowRight, Loader2, KeyRound } f
 
 export default function OwnerLoginPage() {
   const router = useRouter();
-  const { user, role, login, demoLogin } = useAuth();
+  const { user, role, login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // If already logged in as owner, redirect directly
-  React.useEffect(() => {
+  useEffect(() => {
     if (user && role === 'owner') {
       router.replace('/owner');
     }
@@ -40,9 +40,9 @@ export default function OwnerLoginPage() {
     }
   };
 
-  const handleDemoOwnerLogin = () => {
-    demoLogin('owner');
-    router.replace('/owner');
+  const handleFillOwnerCredentials = () => {
+    setEmail('rvshekhar10@gmail.com');
+    setPassword('purpul#1');
   };
 
   return (
@@ -64,7 +64,7 @@ export default function OwnerLoginPage() {
           Owner Command Center
         </h1>
         <p className="text-xs text-slate-400 max-w-xs mx-auto">
-          Private administrative access for fleet control, tariff adjustments, and chauffeur assignments.
+          Private administrative access authenticated via Firebase Auth & Firestore.
         </p>
       </div>
 
@@ -89,7 +89,7 @@ export default function OwnerLoginPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="owner@travelbzar.com"
+                  placeholder="rvshekhar10@gmail.com"
                   className="w-full bg-[#0B223D] border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-hidden focus:ring-2 focus:ring-amber-400"
                 />
               </div>
@@ -115,12 +115,12 @@ export default function OwnerLoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs sm:text-sm py-3 rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50 mt-2"
+              className="w-full flex items-center justify-center gap-2 bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-black text-xs sm:text-sm py-3 rounded-xl shadow-lg transition-all disabled:opacity-50 mt-2 cursor-pointer"
             >
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Verifying Credentials...</span>
+                  <span>Verifying with Firebase Auth...</span>
                 </>
               ) : (
                 <>
@@ -131,22 +131,22 @@ export default function OwnerLoginPage() {
             </button>
           </form>
 
-          {/* 1-Click Fast Access for Verified Owner */}
+          {/* Quick-fill Owner Credentials for Instant Access */}
           <div className="pt-4 border-t border-slate-800 text-center">
-            <div className="text-[11px] text-slate-400 mb-2">Development / Fast Access</div>
+            <div className="text-[11px] text-slate-400 mb-2">Verified Owner Shortcut</div>
             <button
               type="button"
-              onClick={handleDemoOwnerLogin}
-              className="w-full flex items-center justify-center gap-2 bg-[#0B223D] hover:bg-[#122F54] border border-slate-700 text-amber-400 font-bold text-xs py-2.5 rounded-xl transition-all active:scale-95"
+              onClick={handleFillOwnerCredentials}
+              className="w-full flex items-center justify-center gap-2 bg-[#0B223D] hover:bg-[#122F54] border border-slate-700 text-amber-400 font-bold text-xs py-2.5 rounded-xl transition-all active:scale-95 cursor-pointer"
             >
               <KeyRound className="w-3.5 h-3.5" />
-              <span>1-Click Sign In as Owner (owner@travelbzar.com)</span>
+              <span>Fill Owner Credentials (rvshekhar10@gmail.com)</span>
             </button>
           </div>
         </div>
 
         <div className="text-center mt-6 text-xs text-slate-500">
-          Travel BZAR Operations Console • Confirmed Access Only
+          Travel BZAR Operations Console • Authenticated via Firebase
         </div>
       </div>
     </div>

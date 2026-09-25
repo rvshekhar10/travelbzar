@@ -30,5 +30,11 @@ export function useDrivers() {
     await refresh();
   };
 
-  return { drivers, loading, addOrUpdateDriver, refresh };
+  const removeDriver = async (id: string) => {
+    const { deleteDriver } = await import('@/lib/firebase/store');
+    await deleteDriver(id);
+    await refresh();
+  };
+
+  return { drivers, loading, addOrUpdateDriver, removeDriver, refresh };
 }

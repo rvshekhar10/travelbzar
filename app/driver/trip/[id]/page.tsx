@@ -75,7 +75,7 @@ export default function DriverTripConsolePage({ params }: Props) {
     if (booking && booking.status === 'TRIP_STARTED') {
       const stopFn = startDriverLiveBroadcaster(
         booking.id,
-        user?.id || 'drv-1',
+        user?.id || '',
         booking.pickup,
         booking.drop
       );
@@ -111,7 +111,7 @@ export default function DriverTripConsolePage({ params }: Props) {
   const actor = {
     name: user?.name || 'Driver',
     role: 'driver' as const,
-    id: user?.id || 'drv-1',
+    id: user?.id || '',
   };
 
   // State Transition Handlers
@@ -138,7 +138,7 @@ export default function DriverTripConsolePage({ params }: Props) {
 
   const handleReturnToGarage = async () => {
     setActionLoading(true);
-    await returnVehicleToGarage(user?.id || 'drv-1', booking.vehicleId);
+    await returnVehicleToGarage(user?.id || '', booking.vehicleId);
     router.push('/driver');
   };
 
@@ -161,7 +161,7 @@ export default function DriverTripConsolePage({ params }: Props) {
     await updateBookingTripStatus(booking.id, 'TRIP_COMPLETED', actor);
 
     // 3. Stop location broadcaster
-    await stopDriverLiveBroadcaster(booking.id, user?.id || 'drv-1');
+    await stopDriverLiveBroadcaster(booking.id, user?.id || '');
     setIsBroadcasting(false);
 
     setShowPaymentModal(false);

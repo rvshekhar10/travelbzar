@@ -141,6 +141,14 @@ export interface Booking {
 
 export type VehicleStatus = 'AVAILABLE' | 'IN_SERVICE' | 'MAINTENANCE' | 'INACTIVE';
 
+export interface VehicleAvailabilitySchedule {
+  is24x7: boolean;
+  dailyStartTime?: string; // HH:mm format, e.g. "06:00"
+  dailyEndTime?: string; // HH:mm format, e.g. "23:00"
+  availableDays?: string[]; // e.g. ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  notes?: string; // e.g. "Stationed at Dhanbad Base"
+}
+
 export interface Vehicle {
   id: string;
   registrationNumber: string; // e.g. JH-10-BX-1234
@@ -153,6 +161,7 @@ export interface Vehicle {
   photo?: string;
   status: VehicleStatus;
   currentDriverId?: string;
+  availabilitySchedule?: VehicleAvailabilitySchedule;
   notes?: string;
   createdAt: string;
   updatedAt?: string;

@@ -15,59 +15,21 @@ interface AuthContextType {
   user: AppUser | null;
   role: UserRole | null;
   loading: boolean;
-  login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
-  demoLogin: (role: UserRole) => void;
-  register: (data: {
-    email: string;
-    pass: string;
-    name: string;
-    phone: string;
-    role?: UserRole;
-  }) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, pass: string) => Promise<{ success: boolean; user?: AppUser; error?: string }>;
   logout: () => Promise<void>;
   updateUserProfile: (data: Partial<AppUser>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const DEMO_USERS: Record<UserRole, AppUser> = {
-  owner: {
-    id: 'user-owner-1',
-    role: 'owner',
-    name: 'Travel BZAR Owner',
-    email: 'owner@travelbzar.com',
-    phone: '+91 9007210697',
-    status: 'active',
-    createdAt: new Date().toISOString(),
-  },
-  driver: {
-    id: 'drv-1',
-    role: 'driver',
-    name: 'Rajesh Kumar (Chauffeur)',
-    email: 'driver@travelbzar.com',
-    phone: '+91 9876543210',
-    status: 'active',
-    createdAt: new Date().toISOString(),
-  },
-  customer: {
-    id: 'user-customer-1',
-    role: 'customer',
-    name: 'Amit Sharma',
-    email: 'customer@travelbzar.com',
-    phone: '+91 9431100000',
-    status: 'active',
-    createdAt: new Date().toISOString(),
-  },
-};
-
-const AUTH_STORAGE_KEY = 'travelbzar_active_user';
+const AUTH_STORAGE_KEY = 'travelbzar_active_user_v2';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    // 1. Check local session persistence first
+    // 1. Check local session cache first
     try {
       const stored = localStorage.getItem(AUTH_STORAGE_KEY);
       if (stored) {
@@ -78,13 +40,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Ignore
     }
 
-    // 2. Attach Firebase Auth observer if available
+    // 2. Attach Firebase Auth observer
     let unsubscribe = () => {};
     if (auth) {
       try {
         unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
           if (fbUser) {
-            // Fetch user profile from Firestore if available
+            // Fetch live user role & profile from Firestore
             if (db) {
               try {
                 const snap = await getDoc(doc(db, 'users', fbUser.uid));
@@ -96,9 +58,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   return;
                 }
               } catch (e) {
-                console.info('Firestore profile lookup fallback:', e);
+                console.info('Firestore profile lookup notice:', e);
               }
             }
+
+            // Fallback for owner if doc was missing
+            if (fbUser.email?.toLowerCase() === 'rvshekhar10@gmail.com') {
+              const ownerData: AppUser = {
+                id: fbUser.uid,
+                role: 'owner',
+                name: 'Chandra Shekhar (Owner)',
+                email: 'rvshekhar10@gmail.com',
+                phone: '+91 9007210697',
+                status: 'active',
+                createdAt: new Date().toISOString(),
+              };
+              if (db) {
+                try {
+                  await setDoc(doc(db, 'users', fbUser.uid), ownerData, { merge: true });
+                } catch {
+                  // ignore
+                }
+              }
+              setUser(ownerData);
+              localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(ownerData));
+            }
+          } else {
+            // Signed out in Firebase Auth
+            setUser(null);
+            localStorage.removeItem(AUTH_STORAGE_KEY);
           }
           setLoading(false);
         });
@@ -113,163 +101,86 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => unsubscribe();
   }, []);
 
-  const login = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (email: string, pass: string): Promise<{ success: boolean; user?: AppUser; error?: string }> => {
     setLoading(true);
+    const cleanEmail = email.trim().toLowerCase();
 
-    // Check if user exists in local store (e.g. provisioned by owner in driver/fleet setup)
-    if (typeof window !== 'undefined') {
-      try {
-        const rawStore = localStorage.getItem('travelbzar_poc_data_v1');
-        if (rawStore) {
-          const parsed = JSON.parse(rawStore);
-          const matchedUser = Object.values(parsed.users || {}).find(
-            (u: unknown) => (u as AppUser)?.email?.toLowerCase().trim() === lowerEmail
-          ) as AppUser | undefined;
-          if (matchedUser) {
-            setUser(matchedUser);
-            localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(matchedUser));
-            setLoading(false);
-            return { success: true };
+    if (!auth) {
+      setLoading(false);
+      return { success: false, error: 'Firebase Auth is unavailable. Check network or configuration.' };
+    }
+
+    try {
+      const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
+      let appUserData: AppUser | null = null;
+
+      // Fetch user profile from Firestore
+      if (db) {
+        try {
+          const snap = await getDoc(doc(db, 'users', cred.user.uid));
+          if (snap.exists()) {
+            appUserData = snap.data() as AppUser;
+          }
+        } catch (err) {
+          console.error('Firestore user lookup error:', err);
+        }
+      }
+
+      // If owner logs in, ensure owner role and document exists in Firestore
+      if (cleanEmail === 'rvshekhar10@gmail.com') {
+        if (!appUserData || appUserData.role !== 'owner') {
+          appUserData = {
+            id: cred.user.uid,
+            role: 'owner',
+            name: 'Chandra Shekhar (Owner)',
+            email: 'rvshekhar10@gmail.com',
+            phone: '+91 9007210697',
+            status: 'active',
+            createdAt: appUserData?.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          if (db) {
+            await setDoc(doc(db, 'users', cred.user.uid), appUserData, { merge: true });
           }
         }
-      } catch {
-        // fallback
       }
-    }
 
-    // Check if it's one of the demo credentials
-    const lowerEmail = email.toLowerCase().trim();
-    if (lowerEmail.includes('owner')) {
-      demoLogin('owner');
-      setLoading(false);
-      return { success: true };
-    }
-    if (lowerEmail.includes('driver')) {
-      demoLogin('driver');
-      setLoading(false);
-      return { success: true };
-    }
-    if (lowerEmail.includes('customer')) {
-      demoLogin('customer');
-      setLoading(false);
-      return { success: true };
-    }
-
-    // Attempt Firebase Auth
-    if (auth) {
-      try {
-        const cred = await signInWithEmailAndPassword(auth, email, pass);
-        let appUserData: AppUser = {
+      if (!appUserData) {
+        // User exists in Firebase Auth but has not been provisioned in Firestore
+        appUserData = {
           id: cred.user.uid,
-          role: 'customer', // default role
-          name: cred.user.displayName || (email || 'user').split('@')[0],
-          email: cred.user.email || email,
+          role: 'customer',
+          name: cred.user.displayName || cleanEmail.split('@')[0],
+          email: cred.user.email || cleanEmail,
           status: 'active',
           createdAt: new Date().toISOString(),
         };
-
         if (db) {
-          try {
-            const snap = await getDoc(doc(db, 'users', cred.user.uid));
-            if (snap.exists()) {
-              appUserData = snap.data() as AppUser;
-            }
-          } catch {
-            // fallback
-          }
+          await setDoc(doc(db, 'users', cred.user.uid), appUserData, { merge: true });
         }
-
-        setUser(appUserData);
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(appUserData));
-        setLoading(false);
-        return { success: true };
-      } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : 'Invalid credentials. Please check your email and password.';
-        setLoading(false);
-        return { success: false, error: errorMsg };
       }
-    }
 
-    // Default fallback customer account
-    const fallbackUser: AppUser = {
-      id: `usr-${Date.now()}`,
-      role: 'customer',
-      name: (email || 'user').split('@')[0],
-      email: email,
-      status: 'active',
-      createdAt: new Date().toISOString(),
-    };
-    setUser(fallbackUser);
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(fallbackUser));
-    setLoading(false);
-    return { success: true };
-  };
-
-  const demoLogin = (role: UserRole) => {
-    const demoUser = DEMO_USERS[role];
-    setUser(demoUser);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(demoUser));
-    }
-  };
-
-  const register = async (data: {
-    email: string;
-    pass: string;
-    name: string;
-    phone: string;
-    role?: UserRole;
-  }): Promise<{ success: boolean; error?: string }> => {
-    setLoading(true);
-    const assignedRole = data.role || 'customer';
-
-    if (auth) {
-      try {
-        const cred = await createUserWithEmailAndPassword(auth, data.email, data.pass);
-        const newUser: AppUser = {
-          id: cred.user.uid,
-          role: assignedRole,
-          name: data.name,
-          email: data.email,
-          phone: data.phone,
-          status: 'active',
-          createdAt: new Date().toISOString(),
-        };
-
-        if (db) {
-          try {
-            await setDoc(doc(db, 'users', cred.user.uid), newUser);
-          } catch {
-            // fallback
-          }
+      setUser(appUserData);
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(appUserData));
+      setLoading(false);
+      return { success: true, user: appUserData };
+    } catch (err: unknown) {
+      setLoading(false);
+      let errorMsg = 'Invalid credentials. Please verify your email and password.';
+      if (err && typeof err === 'object' && 'code' in err) {
+        const code = (err as { code: string }).code;
+        if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
+          errorMsg = 'Invalid email or password. If you are a driver or customer, ensure your account was created by the owner.';
+        } else if (code === 'auth/wrong-password') {
+          errorMsg = 'Incorrect password. Please try again.';
+        } else if (code === 'auth/too-many-requests') {
+          errorMsg = 'Access to this account has been temporarily disabled due to many failed login attempts.';
+        } else if (code === 'auth/network-request-failed') {
+          errorMsg = 'Network connection failed. Please check your internet connection.';
         }
-
-        setUser(newUser);
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newUser));
-        setLoading(false);
-        return { success: true };
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Failed to register account.';
-        setLoading(false);
-        return { success: false, error: msg };
       }
+      return { success: false, error: errorMsg };
     }
-
-    // Fallback registration
-    const newUser: AppUser = {
-      id: `usr-${Date.now()}`,
-      role: assignedRole,
-      name: data.name,
-      email: data.email,
-      phone: data.phone,
-      status: 'active',
-      createdAt: new Date().toISOString(),
-    };
-
-    setUser(newUser);
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newUser));
-    setLoading(false);
-    return { success: true };
   };
 
   const logout = async () => {
@@ -309,8 +220,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: user?.role || null,
         loading,
         login,
-        demoLogin,
-        register,
         logout,
         updateUserProfile,
       }}

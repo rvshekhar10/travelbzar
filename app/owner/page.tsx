@@ -469,10 +469,13 @@ export default function OwnerDashboardPage() {
                     </div>
                     <div>
                       <h4 className="text-sm font-extrabold text-slate-900">
-                        {v.make} {v.model}
+                        {v.make} {v.model} {v.variant ? `(${v.variant})` : ''}
                       </h4>
                       <div className="text-xs font-mono font-bold text-slate-600 mt-0.5">
-                        {v.registrationNumber}
+                        {v.registrationNumber} • {v.color}
+                      </div>
+                      <div className="text-[11px] text-[#078A32] font-semibold mt-1">
+                        Schedule: {v.availabilitySchedule?.is24x7 ? '24/7 Round the Clock' : `${v.availabilitySchedule?.dailyStartTime || '06:00'} - ${v.availabilitySchedule?.dailyEndTime || '23:00'} IST`}
                       </div>
                     </div>
                   </div>

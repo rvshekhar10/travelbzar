@@ -3,6 +3,7 @@
 import React, { use, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/firebase/authContext';
 import { useBooking } from '@/hooks/useBookings';
 import { useVehicles } from '@/hooks/useVehicles';
 import { useDrivers } from '@/hooks/useDrivers';
@@ -44,6 +45,7 @@ interface Props {
 export default function OwnerBookingDetailPage({ params }: Props) {
   const { id } = use(params);
   const router = useRouter();
+  const { user } = useAuth();
   const { booking, loading, refresh } = useBooking(id);
   const { vehicles } = useVehicles();
   const { drivers } = useDrivers();
@@ -148,9 +150,9 @@ export default function OwnerBookingDetailPage({ params }: Props) {
     if (!confirm('Are you sure you want to cancel this booking?')) return;
     setActionLoading(true);
     await updateBookingTripStatus(booking.id, 'CANCELLED', {
-      name: 'Owner',
+      name: user?.name || 'Owner',
       role: 'owner',
-      id: 'user-owner-1',
+      id: user?.id || 'owner',
     });
     await refresh();
     setActionLoading(false);

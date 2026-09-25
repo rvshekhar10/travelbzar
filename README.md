@@ -268,21 +268,39 @@ NEXT_PUBLIC_BUSINESS_LOCATION="Dhanbad, Jharkhand, India"
 
 ---
 
-## 16. Demo Users (1-Click Switcher)
+## 16. Authentication & Roles (Firebase Auth & Firestore)
 
-The application includes an instant **Demo Persona Switcher** on the login page (`/login`) allowing rapid testing without needing to type credentials:
+Authentication is powered directly by **Firebase Authentication** and role-governed via **Cloud Firestore**:
 
-| Persona | Email | Role | Access |
+| Persona | Provisioned By | Role | Access |
 | :--- | :--- | :--- | :--- |
-| **Owner / Admin** | `owner@travelbzar.com` | `owner` | `/owner` (Full dashboard, fleet, pricing, revenue) |
-| **Driver (Rajesh Kumar)** | `driver@travelbzar.com` | `driver` | `/driver` (Trip execution console, live GPS sharing) |
-| **Customer (Amit Sharma)**| `customer@travelbzar.com` | `customer` | `/customer` (Booking wizard, live tracking, receipts) |
+| **Owner / Admin** | Direct Firebase Auth Setup (`rvshekhar10@gmail.com`) | `owner` | `/owner` (Full dashboard, 1-cab fleet, driver/customer accounts provisioning, pricing, revenue) |
+| **Chauffeur / Driver** | Provisioned exclusively by Owner in `/owner/drivers` | `driver` | `/driver` (Trip execution console, garage departures, live GPS sharing, payment collection) |
+| **Customer / Rider** | Provisioned by Owner in `/owner/customers` | `customer` | `/customer` (Booking wizard, live tracking, receipts) |
 
-Default password for all demo accounts: `travelbzar123`
+### Owner Master Credentials:
+- **Email**: `rvshekhar10@gmail.com`
+- **Password**: `purpul#1`
+- **Access Route**: `/owner/login`
+
+> [!NOTE]
+> All Driver and Customer accounts are created and provisioned exclusively by the Owner through the Owner Console. There are no pre-fed mock accounts or static fallbacks.
 
 ---
 
-## 17. Business Pricing Configuration
+## 17. Fleet Management: Strictly Single-Car Policy with Availability Schedule
+
+Travel BZAR operates with a dedicated single-vehicle model:
+- **Single Active Cab**: The owner registers exactly one car in Firestore (`/owner/vehicles`). Adding a second car is strictly restricted.
+- **Availability Schedule**: The owner sets the vehicle's operating schedule:
+  - 24/7 round-the-clock availability OR custom daily operating hours (e.g., `06:00 AM` to `11:00 PM`).
+  - Active operating days (e.g., Monday through Sunday).
+  - Special operational notes.
+- **Universal Sync**: Only this single vehicle and its schedule are visible across the Customer Booking Engine (`/customer/book`), Driver Dashboard (`/driver`), and Owner Console (`/owner`).
+
+---
+
+## 18. Business Pricing Configuration
 
 All business rates are configured in `config/business.ts` and can be dynamically edited by the Owner at `/owner/pricing`:
 
@@ -326,43 +344,34 @@ export const DEFAULT_PRICING_CONFIG = {
 
 ---
 
-## 18. How to Test Customer Workflow
+## 19. How to Test End-to-End Workflow
 
-1. Open `/login` and click **"Customer Demo"**.
-2. Click **"Book a Cab"** or navigate to `/customer/book`.
-3. **Step 1 (Type)**: Select **Airport Pickup**, choose **Ranchi Airport**.
-4. **Step 2 (Locations)**: Set pickup to `Ranchi Airport Terminal` and drop to `Bank More, Dhanbad`.
-5. **Step 3 (Date & Time)**: Select tomorrow's date at `10:30 AM`. Enter Flight Number `6E-2451` and Expected Arrival `10:00 AM`.
-6. **Step 4 (Fare Estimate)**: Verify the fare engine calculates road distance (~150 km) and displays the configured estimated range: **₹3,500 – ₹4,000**.
-7. **Step 5 (Confirmation)**: Review and submit. Booking status becomes `PENDING_CONFIRMATION` with booking ID `TBZ-YYYYMMDD-XXX`.
+### Step 1: Owner Setup (Vehicle & Chauffeur)
+1. Navigate to `/owner/login` and log in with `rvshekhar10@gmail.com` / `purpul#1`.
+2. Go to **Fleet Management** (`/owner/vehicles`):
+   - Add your single vehicle (e.g., `Toyota Innova Crysta`, registration `JH-10-BX-1001`).
+   - Configure its **Availability Schedule** (24/7 or daily hours, days of week).
+3. Go to **Chauffeurs** (`/owner/drivers`):
+   - Click **"Add Chauffeur"** to provision a driver account with email and password into Firebase Auth.
+4. Go to **Customers & Riders** (`/owner/customers`):
+   - Click **"Create Customer Account"** to provision a customer account into Firebase Auth.
 
----
+### Step 2: Customer Booking
+1. Open `/customer/book` and log in with the provisioned customer credentials.
+2. Notice the live Availability Schedule badge showing the single cab's status.
+3. Choose Airport or Local City service, set pickup & destination, and select date & time.
+4. Submit the booking request. Status is set to `PENDING_CONFIRMATION`.
 
-## 19. How to Test Owner Workflow
+### Step 3: Owner Confirmation & Assignment
+1. Switch to the Owner Console (`/owner/bookings`).
+2. Open the booking details, verify vehicle availability, and assign your provisioned chauffeur.
+3. Click **"Confirm & Assign Driver"**.
 
-1. Open `/login` and switch to **"Owner Demo"**.
-2. Navigate to `/owner/bookings` and locate the new booking.
-3. Click on the booking to view details:
-   - Notice the **Vehicle Availability** status showing available cabs.
-   - Enter the agreed final fare (e.g. `₹3,800` within the ₹3,500–₹4,000 range).
-   - Assign Vehicle: `Hyundai Venue (JH-10-BX-4421)`
-   - Assign Driver: `Rajesh Kumar (+91 98765 43210)`
-4. Click **"Confirm & Assign Driver"**.
-5. Booking status transitions to `DRIVER_ASSIGNED`. An audit timeline event is logged.
-
----
-
-## 20. How to Test Driver Workflow & Live Tracking
-
-1. Open `/login` in a new tab or incognito window and click **"Driver Demo"**.
-2. In the Driver Dashboard (`/driver`), Rajesh Kumar sees the assigned trip in **"Current Active Trip"**.
-3. Click **"Open Trip Console"** (`/driver/trip/[id]`).
-4. Click **"Mark Arrived at Pickup"** (status becomes `DRIVER_ARRIVED`).
-5. Click **"Start Trip"**:
-   - Status updates to `TRIP_STARTED`.
-   - Live location sharing begins automatically (broadcasting coordinates every 6 seconds).
-6. Switch back to the **Customer tab** (`/customer/bookings/[id]`):
-   - Notice the map updates in real time with the driver's current coordinates.
+### Step 4: Driver Execution & Live GPS
+1. In the Driver Portal (`/driver/login`), log in with the provisioned chauffeur credentials.
+2. Accept the assigned trip and click **"Depart Garage"** or **"Start Trip"**.
+3. Live GPS location broadcasting starts automatically and streams to the customer tracking page.
+4. Upon arrival, conclude the trip, collect payment (Cash / UPI), and return the vehicle to the garage.
    - The status bar reflects *"Driver is on the way • Updated just now"*.
 7. Back in the **Driver tab**, click **"Complete Trip & Collect Payment"**:
    - Enter final parking/toll charges (if applicable).

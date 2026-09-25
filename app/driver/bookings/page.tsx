@@ -12,7 +12,7 @@ export default function DriverBookingsListPage() {
   const { user } = useAuth();
   const { bookings, loading } = useBookings();
 
-  const driverTrips = bookings.filter((b) => !b.driverId || b.driverId === user?.id || b.driverId === 'drv-1');
+  const driverTrips = bookings.filter((b) => !b.driverId || b.driverId === user?.id);
 
   return (
     <div className="py-6 sm:py-8 px-4 sm:px-6 max-w-4xl mx-auto space-y-6">

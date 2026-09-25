@@ -21,11 +21,9 @@ let storage: FirebaseStorage | null = null;
 
 try {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-  if (typeof window !== 'undefined') {
-    auth = getAuth(app);
-    db = getFirestore(app);
-    storage = getStorage(app);
-  }
+  auth = getAuth(app);
+  db = getFirestore(app);
+  storage = getStorage(app);
 } catch (error) {
   console.warn('Firebase initialization notice:', error);
   app = {} as FirebaseApp;

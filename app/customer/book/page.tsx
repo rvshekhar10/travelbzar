@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/authContext';
 import { usePricing } from '@/hooks/usePricing';
+import { useVehicles } from '@/hooks/useVehicles';
 import { BookingType, LocationCoordinate, AirportDetails, Booking } from '@/types';
 import { BUSINESS_CONFIG } from '@/config/business';
 import { calculateRouteDistance, getPresetLocations } from '@/services/mapService';
@@ -35,8 +36,10 @@ import {
 function BookCabContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, login, register, demoLogin } = useAuth();
+  const { user, login } = useAuth();
   const { pricing } = usePricing();
+  const { vehicles, loading: loadingVehicles } = useVehicles();
+  const primaryVehicle = vehicles[0];
 
   // Booking Stepper state: 1: TYPE, 2: LOCATIONS, 3: DATE & TIME, 4: FARE & ROUTE, 5: CONFIRM
   const [step, setStep] = useState<number>(1);
@@ -182,40 +185,21 @@ function BookCabContent() {
   const handleConfirmBooking = async () => {
     setAuthError(null);
 
-    // If user is not authenticated, require registration or login like Ola/Uber
+    // If user is not authenticated, require login with provisioned credentials
     let activeUser = user;
     if (!activeUser) {
-      if (authTab === 'signup') {
-        if (!customerName || !customerPhone || !authEmail || !authPassword) {
-          setAuthError('Please fill in your Name, Phone, Email, and Password to create your account.');
-          return;
-        }
-        setSubmitting(true);
-        const regRes = await register({
-          email: authEmail,
-          pass: authPassword,
-          name: customerName,
-          phone: customerPhone,
-          role: 'customer',
-        });
-        if (!regRes.success) {
-          setAuthError(regRes.error || 'Failed to create account.');
-          setSubmitting(false);
-          return;
-        }
-      } else {
-        if (!authEmail || !authPassword) {
-          setAuthError('Please enter your email and password to sign in.');
-          return;
-        }
-        setSubmitting(true);
-        const loginRes = await login(authEmail, authPassword);
-        if (!loginRes.success) {
-          setAuthError(loginRes.error || 'Invalid email or password.');
-          setSubmitting(false);
-          return;
-        }
+      if (!authEmail || !authPassword) {
+        setAuthError('Please enter your email and password to sign in. Customer accounts are provisioned by Travel BZAR.');
+        return;
       }
+      setSubmitting(true);
+      const loginRes = await login(authEmail, authPassword);
+      if (!loginRes.success || !loginRes.user) {
+        setAuthError(loginRes.error || 'Invalid credentials. Please verify your email and password.');
+        setSubmitting(false);
+        return;
+      }
+      activeUser = loginRes.user;
     }
 
     setSubmitting(true);
@@ -232,10 +216,10 @@ function BookCabContent() {
           : undefined;
 
       const newBooking = await createNewBooking({
-        customerId: user?.id || (authEmail ? `user-${authEmail}` : 'user-customer-1'),
-        customerName: customerName || user?.name || 'Customer',
-        customerPhone: customerPhone || user?.phone || '+91 9431100000',
-        customerEmail: user?.email || authEmail,
+        customerId: activeUser.id,
+        customerName: activeUser.name || customerName || 'Valued Customer',
+        customerPhone: activeUser.phone || customerPhone || '+91 9431100000',
+        customerEmail: activeUser.email,
         bookingType,
         bookingDate,
         pickupTime,
@@ -398,6 +382,54 @@ function BookCabContent() {
             </p>
           </div>
 
+          {/* Primary Fleet Vehicle & Availability Schedule Banner */}
+          {!loadingVehicles && !primaryVehicle ? (
+            <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 text-amber-900 text-xs space-y-2">
+              <div className="font-black text-amber-950 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Fleet Setup in Progress</span>
+              </div>
+              <p className="text-amber-800 leading-relaxed text-[11px]">
+                The dedicated fleet cab is currently being configured or maintained by Travel BZAR management in Firestore. Bookings are temporarily paused until the fleet cab is activated.
+              </p>
+            </div>
+          ) : primaryVehicle ? (
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-[#061B33] text-white flex items-center justify-center font-bold shadow-md shrink-0">
+                  <Car className="w-6 h-6 text-[#42B900]" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#078A32] block">
+                    Dedicated Fleet Vehicle
+                  </span>
+                  <h4 className="text-sm sm:text-base font-black text-slate-900">
+                    {primaryVehicle.make} {primaryVehicle.model} {primaryVehicle.variant ? `(${primaryVehicle.variant})` : ''}
+                  </h4>
+                  <div className="text-slate-500 font-mono text-[11px] mt-0.5">
+                    {primaryVehicle.registrationNumber} • {primaryVehicle.color} • {primaryVehicle.vehicleType}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-3 rounded-xl border border-slate-200 text-left sm:text-right shrink-0">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">
+                  Operating Schedule
+                </span>
+                <span className="font-black text-slate-800 text-xs block">
+                  {primaryVehicle.availabilitySchedule?.is24x7
+                    ? '24/7 Round the Clock'
+                    : `${primaryVehicle.availabilitySchedule?.dailyStartTime || '06:00'} — ${primaryVehicle.availabilitySchedule?.dailyEndTime || '23:00'} IST`}
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  {primaryVehicle.availabilitySchedule?.is24x7
+                    ? 'Available Daily'
+                    : primaryVehicle.availabilitySchedule?.availableDays?.join(', ')}
+                </span>
+              </div>
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Airport Drop */}
             <div
@@ -466,13 +498,22 @@ function BookCabContent() {
           </div>
 
           <div className="flex justify-end pt-4 border-t border-slate-100">
-            <button
-              onClick={() => setStep(2)}
-              className="flex items-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-bold text-xs sm:text-sm px-6 py-3 rounded-xl shadow-md transition-all"
-            >
-              <span>Continue to Locations</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            {primaryVehicle ? (
+              <button
+                onClick={() => setStep(2)}
+                className="flex items-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-bold text-xs sm:text-sm px-6 py-3 rounded-xl shadow-md transition-all cursor-pointer"
+              >
+                <span>Continue to Locations</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            ) : (
+              <button
+                disabled
+                className="opacity-50 cursor-not-allowed flex items-center gap-2 bg-slate-200 text-slate-600 font-bold text-xs sm:text-sm px-6 py-3 rounded-xl"
+              >
+                <span>Fleet Cab Unavailable in Firestore</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -695,6 +736,34 @@ function BookCabContent() {
             </div>
           </div>
 
+          {/* Availability Schedule Notice */}
+          {primaryVehicle?.availabilitySchedule && !primaryVehicle.availabilitySchedule.is24x7 && (
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
+              <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-[#078A32]" />
+                <span>Primary Cab Operating Hours</span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                Operating Window: <strong>{primaryVehicle.availabilitySchedule.dailyStartTime || '06:00'}</strong> to{' '}
+                <strong>{primaryVehicle.availabilitySchedule.dailyEndTime || '23:00'} IST</strong> (
+                {primaryVehicle.availabilitySchedule.availableDays?.join(', ')}).
+              </p>
+            </div>
+          )}
+
+          {/* Warning if selected time is outside operating window */}
+          {primaryVehicle?.availabilitySchedule &&
+            !primaryVehicle.availabilitySchedule.is24x7 &&
+            ((primaryVehicle.availabilitySchedule.dailyStartTime && pickupTime < primaryVehicle.availabilitySchedule.dailyStartTime) ||
+              (primaryVehicle.availabilitySchedule.dailyEndTime && pickupTime > primaryVehicle.availabilitySchedule.dailyEndTime)) && (
+              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  Notice: Your selected pickup time ({pickupTime} IST) is outside the cab&apos;s daily operating window ({primaryVehicle.availabilitySchedule.dailyStartTime} — {primaryVehicle.availabilitySchedule.dailyEndTime} IST).
+                </span>
+              </div>
+            )}
+
           {/* Night Charge Indicator Note */}
           <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
             <div className="font-bold text-slate-800 flex items-center gap-1.5">
@@ -829,51 +898,18 @@ function BookCabContent() {
             />
           </div>
 
-          {/* Ola/Uber Style Account Creation / Sign-In requirement */}
+          {/* Customer Authentication Requirement */}
           {!user ? (
             <div className="bg-emerald-50/70 border-2 border-emerald-400/80 rounded-2xl p-5 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-emerald-200">
-                <div className="flex items-center gap-2">
-                  <User className="w-5 h-5 text-[#078A32]" />
-                  <span className="font-black text-sm text-[#061B33]">
-                    Create Account to Request Cab
-                  </span>
-                </div>
-
-                <div className="flex items-center bg-white rounded-xl p-1 border border-emerald-300 text-xs font-bold">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthTab('signup');
-                      setAuthError(null);
-                    }}
-                    className={`px-3 py-1 rounded-lg transition-all ${
-                      authTab === 'signup'
-                        ? 'bg-[#078A32] text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    New Rider (Sign Up)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthTab('signin');
-                      setAuthError(null);
-                    }}
-                    className={`px-3 py-1 rounded-lg transition-all ${
-                      authTab === 'signin'
-                        ? 'bg-[#078A32] text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Existing Rider (Sign In)
-                  </button>
-                </div>
+              <div className="flex items-center gap-2 pb-2 border-b border-emerald-200">
+                <User className="w-5 h-5 text-[#078A32]" />
+                <span className="font-black text-sm text-[#061B33]">
+                  Sign In to Request Cab
+                </span>
               </div>
 
               <p className="text-xs text-slate-600 leading-relaxed">
-                Like Ola & Uber, creating an account ensures your chauffeur can reach you and you can track their live GPS departure from the garage.
+                Customer accounts are provisioned by Travel BZAR administration. Sign in with your registered email and password to place your booking request and receive live dispatch updates.
               </p>
 
               {authError && (
@@ -883,71 +919,35 @@ function BookCabContent() {
                 </div>
               )}
 
-              {authTab === 'signup' ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">Email Address</label>
-                    <input
-                      type="email"
-                      required
-                      value={authEmail}
-                      onChange={(e) => setAuthEmail(e.target.value)}
-                      placeholder="e.g. rider@example.com"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">Set Password</label>
-                    <input
-                      type="password"
-                      required
-                      value={authPassword}
-                      onChange={(e) => setAuthPassword(e.target.value)}
-                      placeholder="Minimum 6 characters"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
-                    />
-                  </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="e.g. rider@example.com"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
+                  />
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div>
-                      <label className="font-bold text-slate-700 block mb-1">Email Address</label>
-                      <input
-                        type="email"
-                        required
-                        value={authEmail}
-                        onChange={(e) => setAuthEmail(e.target.value)}
-                        placeholder="rider@example.com"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
-                      />
-                    </div>
-                    <div>
-                      <label className="font-bold text-slate-700 block mb-1">Password</label>
-                      <input
-                        type="password"
-                        required
-                        value={authPassword}
-                        onChange={(e) => setAuthPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
-                      />
-                    </div>
-                  </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
+                  />
+                </div>
+              </div>
 
-                  <div className="flex items-center justify-between text-xs pt-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        demoLogin('customer');
-                      }}
-                      className="text-[#078A32] font-bold hover:underline"
-                    >
-                      1-Click Sign In as Amit Sharma (Demo Rider) →
-                    </button>
-                  </div>
-                </div>
-              )}
+              <div className="text-[11px] text-slate-500 pt-1">
+                Don&apos;t have an account yet? Contact Travel BZAR at{' '}
+                <strong className="text-slate-800">+91 9007210697</strong> to get provisioned.
+              </div>
             </div>
           ) : (
             <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-300 flex items-center justify-between text-xs text-emerald-950">

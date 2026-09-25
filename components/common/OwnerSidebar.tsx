@@ -25,8 +25,9 @@ export const OwnerSidebar: React.FC = () => {
   const links = [
     { href: '/owner', label: 'Overview', icon: LayoutDashboard },
     { href: '/owner/bookings', label: 'All Bookings', icon: CalendarDays },
-    { href: '/owner/drivers', label: 'Drivers (Chauffeurs)', icon: Users },
     { href: '/owner/vehicles', label: 'Vehicles Fleet (Max 1)', icon: Car },
+    { href: '/owner/drivers', label: 'Chauffeurs & Staff', icon: Users },
+    { href: '/owner/customers', label: 'Customers & Riders', icon: Sparkles },
     { href: '/owner/pricing', label: 'Rate Card & Pricing', icon: Compass },
     { href: '/owner/analytics', label: 'Reports & Revenue', icon: BarChart3 },
     { href: '/owner/notifications', label: 'Notifications', icon: Bell, badge: unreadCount },

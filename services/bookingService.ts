@@ -156,6 +156,9 @@ export async function createNewBooking(input: CreateBookingInput): Promise<Booki
   const id = `tbz-book-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
   const bookingNumber = generateBookingNumber();
 
+  const vehicles = await getVehicles();
+  const primaryCab = vehicles[0];
+
   const newBooking: Booking = {
     id,
     bookingNumber,
@@ -163,6 +166,9 @@ export async function createNewBooking(input: CreateBookingInput): Promise<Booki
     customerName: input.customerName,
     customerPhone: input.customerPhone,
     customerEmail: input.customerEmail,
+    vehicleId: primaryCab?.id,
+    vehicleModel: primaryCab ? `${primaryCab.make} ${primaryCab.model}` : undefined,
+    vehicleRegistrationNumber: primaryCab?.registrationNumber,
     bookingType: input.bookingType,
     bookingDate: input.bookingDate,
     pickupTime: input.pickupTime,
@@ -183,7 +189,7 @@ export async function createNewBooking(input: CreateBookingInput): Promise<Booki
 
   // Notify Owner
   await addNotification({
-    userId: 'user-owner-1',
+    userId: 'all',
     title: 'New Booking Request',
     body: `${bookingNumber}: ${input.customerName} requested ${input.bookingType.replace('_', ' ')} on ${input.bookingDate} at ${input.pickupTime}.`,
     type: 'BOOKING_REQUESTED',
@@ -316,12 +322,8 @@ export async function acceptBookingByDriver(
   }
 
   const drivers = await getDrivers();
-  const driver = drivers.find((d) => d.id === driverId) || {
-    id: driverId,
-    name: 'Rajesh Kumar (Chauffeur)',
-    phone: '+91 9876543210',
-    assignedVehicleId: 'veh-1',
-  };
+  const driver = drivers.find((d) => d.id === driverId);
+  if (!driver) return { success: false, error: 'Driver profile not found in Firestore.' };
 
   const vehicles = await getVehicles();
   const vehicle = vehicles.find((v) => v.id === driver.assignedVehicleId) || vehicles[0];
@@ -332,9 +334,9 @@ export async function acceptBookingByDriver(
     driverId: driver.id,
     driverName: driver.name,
     driverPhone: driver.phone,
-    vehicleId: vehicle?.id || 'veh-1',
-    vehicleModel: vehicle ? `${vehicle.make} ${vehicle.model}` : 'Hyundai Venue',
-    vehicleRegistrationNumber: vehicle?.registrationNumber || 'JH-10-BX-4421',
+    vehicleId: vehicle?.id,
+    vehicleModel: vehicle ? `${vehicle.make} ${vehicle.model}` : undefined,
+    vehicleRegistrationNumber: vehicle?.registrationNumber,
     confirmedAt: new Date().toISOString(),
     driverAssignedAt: new Date().toISOString(),
   };
@@ -454,7 +456,7 @@ export async function updateBookingTripStatus(
       bookingId: booking.id,
     });
     await addNotification({
-      userId: 'user-owner-1',
+      userId: 'owner',
       title: 'Trip Completed',
       body: `Trip #${booking.bookingNumber} marked completed by ${actor.name}. Total fare: ₹${booking.fare.totalFare.toLocaleString('en-IN')}.`,
       type: 'TRIP_COMPLETED',

@@ -9,7 +9,7 @@ import { Car, Lock, Mail, AlertCircle, ArrowRight, Loader2, Sparkles, Navigation
 
 export default function DriverLoginPage() {
   const router = useRouter();
-  const { user, role, login, demoLogin } = useAuth();
+  const { user, role, login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -39,11 +39,6 @@ export default function DriverLoginPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleDemoDriverLogin = () => {
-    demoLogin('driver');
-    router.replace('/driver');
   };
 
   return (
@@ -121,7 +116,7 @@ export default function DriverLoginPage() {
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Signing In...</span>
+                  <span>Verifying Credentials...</span>
                 </>
               ) : (
                 <>
@@ -132,17 +127,10 @@ export default function DriverLoginPage() {
             </button>
           </form>
 
-          {/* 1-Click Fast Driver Sign In for Testing */}
           <div className="pt-3 border-t border-slate-800 text-center">
-            <div className="text-[11px] text-slate-400 mb-2">1-Click Evaluation Sign In</div>
-            <button
-              type="button"
-              onClick={handleDemoDriverLogin}
-              className="w-full flex items-center justify-center gap-2 bg-[#0B223D] hover:bg-[#122F54] border border-slate-700 text-[#42B900] font-bold text-xs py-2.5 rounded-xl transition-all active:scale-95"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>1-Click Sign In as Rajesh Chauffeur (driver@travelbzar.com)</span>
-            </button>
+            <p className="text-[11px] text-slate-400">
+              Chauffeur credentials are provisioned by Travel BZAR management. Please contact the fleet administrator if you require duty login access.
+            </p>
           </div>
         </div>
 

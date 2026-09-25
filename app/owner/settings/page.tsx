@@ -57,7 +57,7 @@ export default function OwnerSettingsPage() {
               <span className="font-extrabold text-[#078A32]">Step 2: Fleet</span>
               <CheckCircle2 className="w-4 h-4 text-[#078A32]" />
             </div>
-            <p className="text-slate-600 text-[11px]">2 Vehicles configured (Venue & Creta)</p>
+            <p className="text-slate-600 text-[11px]">Dedicated primary cab (Firestore synchronized)</p>
           </div>
 
           <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200">

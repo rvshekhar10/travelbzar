@@ -2,11 +2,13 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useAuth } from '@/lib/firebase/authContext';
 import { useNotifications } from '@/hooks/useNotifications';
 import { Bell, ArrowRight, ShieldCheck } from 'lucide-react';
 
 export default function OwnerNotificationsPage() {
-  const { notifications, unreadCount, markAsRead, loading } = useNotifications('user-owner-1');
+  const { user } = useAuth();
+  const { notifications, unreadCount, markAsRead, loading } = useNotifications(user?.id || 'owner');
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
