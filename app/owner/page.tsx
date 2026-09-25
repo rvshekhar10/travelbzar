@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useBookings } from '@/hooks/useBookings';
 import { useVehicles } from '@/hooks/useVehicles';
 import { useDrivers } from '@/hooks/useDrivers';
+import { useDriverContinuousLocation } from '@/hooks/useDriverLocation';
 import { computeAnalytics } from '@/services/analyticsService';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
 import { PaymentStatusBadge } from '@/components/booking/PaymentStatusBadge';
@@ -21,6 +22,7 @@ import {
   ShieldCheck,
   BarChart3,
   Navigation,
+  Radio,
 } from 'lucide-react';
 
 export default function OwnerDashboardPage() {
@@ -29,6 +31,15 @@ export default function OwnerDashboardPage() {
   const { drivers } = useDrivers();
 
   const analytics = computeAnalytics(bookings);
+
+  // Primary vehicle & assigned chauffeur
+  const primaryVehicle = vehicles[0];
+  const assignedDriver = primaryVehicle
+    ? drivers.find((d) => d.assignedVehicleId === primaryVehicle.id)
+    : null;
+
+  // Real-time GPS location of chauffeur (continuous tracking)
+  const { location: driverBeacon } = useDriverContinuousLocation(assignedDriver?.id);
 
   // Pending bookings requiring immediate owner action
   const pendingConfirmation = bookings.filter((b) => b.status === 'PENDING_CONFIRMATION');
@@ -43,10 +54,6 @@ export default function OwnerDashboardPage() {
 
   // Business readiness logic (1 Vehicle + 1 Assigned Driver)
   const hasVehicle = vehicles.length > 0;
-  const primaryVehicle = vehicles[0];
-  const assignedDriver = primaryVehicle
-    ? drivers.find((d) => d.assignedVehicleId === primaryVehicle.id)
-    : null;
   const isBusinessReady = hasVehicle && Boolean(assignedDriver);
 
   return (
@@ -449,39 +456,68 @@ export default function OwnerDashboardPage() {
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {vehicles.map((v) => (
-              <div
-                key={v.id}
-                className="p-4 rounded-2xl border border-slate-200 bg-slate-50/60 flex items-center justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-100 text-[#078A32] flex items-center justify-center font-bold">
-                    <Car className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-extrabold text-slate-900">
-                      {v.make} {v.model}
-                    </h4>
-                    <div className="text-xs font-mono font-bold text-slate-600 mt-0.5">
-                      {v.registrationNumber}
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {vehicles.map((v) => (
+                <div
+                  key={v.id}
+                  className="p-4 rounded-2xl border border-slate-200 bg-slate-50/60 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-100 text-[#078A32] flex items-center justify-center font-bold">
+                      <Car className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-extrabold text-slate-900">
+                        {v.make} {v.model}
+                      </h4>
+                      <div className="text-xs font-mono font-bold text-slate-600 mt-0.5">
+                        {v.registrationNumber}
+                      </div>
                     </div>
                   </div>
+
+                  <div className="text-right">
+                    <span
+                      className={`inline-block text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${
+                        v.status === 'AVAILABLE'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                          : 'bg-amber-50 text-amber-800 border-amber-300'
+                      }`}
+                    >
+                      {v.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Continuous Driver Location Sharing Status */}
+            {assignedDriver && (
+              <div className="p-3.5 rounded-2xl bg-[#061B33] text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#42B900] opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#42B900]" />
+                  </span>
+                  <span className="font-bold">
+                    Continuous Chauffeur GPS:{' '}
+                    <strong className="text-[#42B900]">{assignedDriver.name}</strong> ({assignedDriver.phone})
+                  </span>
                 </div>
 
-                <div className="text-right">
-                  <span
-                    className={`inline-block text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${
-                      v.status === 'AVAILABLE'
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                        : 'bg-amber-50 text-amber-800 border-amber-300'
-                    }`}
-                  >
-                    {v.status}
+                <div className="text-[11px] font-mono text-slate-300 flex items-center gap-3">
+                  <span>
+                    Lat: {driverBeacon?.latitude ? driverBeacon.latitude.toFixed(4) : '23.7957'}, Lng:{' '}
+                    {driverBeacon?.longitude ? driverBeacon.longitude.toFixed(4) : '86.4304'}
+                  </span>
+                  <span className="text-emerald-400 font-bold">Speed: {driverBeacon?.speed || 0} km/h</span>
+                  <span className="bg-[#0B223D] px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-200">
+                    {driverBeacon?.dutyStatus || 'ON DUTY'}
                   </span>
                 </div>
               </div>
-            ))}
+            )}
           </div>
         )}
       </div>

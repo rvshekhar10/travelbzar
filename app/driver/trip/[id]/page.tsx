@@ -9,10 +9,12 @@ import { useDriverLocation } from '@/hooks/useDriverLocation';
 import {
   updateBookingTripStatus,
   recordBookingPayment,
+  returnVehicleToGarage,
 } from '@/services/bookingService';
 import {
   startDriverLiveBroadcaster,
   stopDriverLiveBroadcaster,
+  getGarageNavigationUrl,
 } from '@/services/locationService';
 import { getGoogleMapsNavigationUrl } from '@/services/mapService';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
@@ -32,6 +34,8 @@ import {
   AlertTriangle,
   Radio,
   ExternalLink,
+  Car,
+  Warehouse,
 } from 'lucide-react';
 
 interface Props {
@@ -111,6 +115,13 @@ export default function DriverTripConsolePage({ params }: Props) {
   };
 
   // State Transition Handlers
+  const handleDepartGarage = async () => {
+    setActionLoading(true);
+    await updateBookingTripStatus(booking.id, 'DRIVER_EN_ROUTE', actor);
+    await refresh();
+    setActionLoading(false);
+  };
+
   const handleMarkArrived = async () => {
     setActionLoading(true);
     await updateBookingTripStatus(booking.id, 'DRIVER_ARRIVED', actor);
@@ -123,6 +134,12 @@ export default function DriverTripConsolePage({ params }: Props) {
     await updateBookingTripStatus(booking.id, 'TRIP_STARTED', actor);
     await refresh();
     setActionLoading(false);
+  };
+
+  const handleReturnToGarage = async () => {
+    setActionLoading(true);
+    await returnVehicleToGarage(user?.id || 'drv-1', booking.vehicleId);
+    router.push('/driver');
   };
 
   const handleOpenCompleteModal = () => {
@@ -282,8 +299,20 @@ export default function DriverTripConsolePage({ params }: Props) {
 
         {/* STEPPED DRIVER LIFECYCLE ACTION BUTTONS */}
         <div className="pt-2">
-          {/* 1. Driver En Route -> Click ARRIVED */}
-          {['CONFIRMED', 'DRIVER_ASSIGNED', 'DRIVER_EN_ROUTE'].includes(booking.status) && (
+          {/* 1. Next Assigned -> Depart Garage */}
+          {['CONFIRMED', 'DRIVER_ASSIGNED'].includes(booking.status) && (
+            <button
+              onClick={handleDepartGarage}
+              disabled={actionLoading}
+              className="w-full bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-black py-4 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 text-sm sm:text-base"
+            >
+              <Car className="w-5 h-5" />
+              <span>DEPART GARAGE (EN ROUTE TO CUSTOMER)</span>
+            </button>
+          )}
+
+          {/* 2. Driver En Route -> Click ARRIVED */}
+          {booking.status === 'DRIVER_EN_ROUTE' && (
             <button
               onClick={handleMarkArrived}
               disabled={actionLoading}
@@ -294,7 +323,7 @@ export default function DriverTripConsolePage({ params }: Props) {
             </button>
           )}
 
-          {/* 2. Driver Arrived -> Click START TRIP */}
+          {/* 3. Driver Arrived -> Click START TRIP */}
           {booking.status === 'DRIVER_ARRIVED' && (
             <button
               onClick={handleStartTrip}
@@ -302,11 +331,11 @@ export default function DriverTripConsolePage({ params }: Props) {
               className="w-full bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-black py-4 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 text-sm sm:text-base animate-pulse"
             >
               <Play className="w-5 h-5 fill-white" />
-              <span>START TRIP & BROADCAST LOCATION</span>
+              <span>START TRIP (CUSTOMER BOARDED)</span>
             </button>
           )}
 
-          {/* 3. Trip in Progress -> Click END TRIP */}
+          {/* 4. Trip in Progress -> Click END TRIP */}
           {booking.status === 'TRIP_STARTED' && (
             <button
               onClick={handleOpenCompleteModal}
@@ -318,22 +347,43 @@ export default function DriverTripConsolePage({ params }: Props) {
             </button>
           )}
 
-          {/* 4. Trip Completed */}
+          {/* 5. Trip Completed -> Return to Garage */}
           {booking.status === 'TRIP_COMPLETED' && (
-            <div className="bg-emerald-50 border border-emerald-300 p-4 rounded-2xl text-center space-y-2">
-              <div className="w-10 h-10 rounded-full bg-emerald-100 text-[#078A32] flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-6 h-6" />
+            <div className="bg-amber-500/10 border-2 border-amber-400 rounded-3xl p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-amber-950 font-black text-xs uppercase tracking-wider">
+                  <Warehouse className="w-5 h-5 text-amber-600" />
+                  <span>Trip Concluded • Returning to Garage</span>
+                </div>
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                  Fare {booking.paymentStatus} ✓
+                </span>
               </div>
-              <h3 className="text-sm font-bold text-emerald-950">Trip Completed Successfully</h3>
-              <p className="text-xs text-emerald-800">
-                Fare of ₹{booking.fare.totalFare.toLocaleString('en-IN')} marked as {booking.paymentStatus}. Location sharing stopped.
+              <p className="text-xs text-amber-900 leading-relaxed">
+                Payment of ₹{booking.fare.totalFare.toLocaleString('en-IN')} has been collected. Navigate primary cab back to Travel BZAR Dhanbad Garage Base.
               </p>
-              <Link
-                href="/driver"
-                className="inline-block mt-2 bg-[#061B33] text-white text-xs font-bold px-4 py-2 rounded-xl"
-              >
-                Back to Driver Console
-              </Link>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <a
+                  href={getGarageNavigationUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1.5 bg-[#061B33] hover:bg-[#0B223D] text-white text-xs font-bold py-3 rounded-xl shadow-md transition-all active:scale-95"
+                >
+                  <Navigation className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Nav to Garage</span>
+                  <ExternalLink className="w-3 h-3 text-slate-400" />
+                </a>
+
+                <button
+                  onClick={handleReturnToGarage}
+                  disabled={actionLoading}
+                  className="flex items-center justify-center gap-1.5 bg-[#078A32] hover:bg-[#056B27] text-white text-xs font-black py-3 rounded-xl shadow-md transition-all active:scale-95"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Arrived at Garage (Reset)</span>
+                </button>
+              </div>
             </div>
           )}
         </div>

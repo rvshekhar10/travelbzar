@@ -1,8 +1,21 @@
 import { DriverLocation, LocationCoordinate } from '@/types';
-import { updateDriverLocation, getDriverLocation } from '@/lib/firebase/store';
+import { updateDriverLocation, getDriverLocation, getDriverContinuousLocation } from '@/lib/firebase/store';
 
 let trackingInterval: NodeJS.Timeout | null = null;
 let simulatedProgress = 0.05; // 0 to 1 progress along route
+
+export const DHANBAD_GARAGE_LOCATION: LocationCoordinate = {
+  address: 'Travel BZAR Garage, Bank More, Dhanbad, Jharkhand 826001',
+  latitude: 23.7957,
+  longitude: 86.4304,
+};
+
+/**
+ * Returns Google Maps Navigation URL specifically to Travel BZAR Garage base.
+ */
+export function getGarageNavigationUrl(): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${DHANBAD_GARAGE_LOCATION.latitude},${DHANBAD_GARAGE_LOCATION.longitude}`;
+}
 
 /**
  * Requests device GPS location with graceful fallback.
@@ -43,49 +56,65 @@ export async function getCurrentDeviceLocation(): Promise<LocationCoordinate> {
 }
 
 /**
- * Starts broadcasting driver live location periodically (5-8s interval).
- * Only active while TRIP_STARTED.
+ * Continuous Driver GPS Beacon
+ * Shared continuously with Owner (and Customer during active trips/departure).
  */
-export function startDriverLiveBroadcaster(
-  bookingId: string,
+export function startContinuousDriverBeacon(
   driverId: string,
-  origin: LocationCoordinate,
-  destination: LocationCoordinate,
-  onUpdate?: (loc: DriverLocation) => void
+  options?: {
+    bookingId?: string;
+    origin?: LocationCoordinate;
+    destination?: LocationCoordinate;
+    dutyStatus?: 'ON_DUTY' | 'EN_ROUTE' | 'ON_TRIP' | 'RETURNING_TO_GARAGE' | 'OFF_DUTY';
+    onUpdate?: (loc: DriverLocation) => void;
+  }
 ): () => void {
-  stopDriverLiveBroadcaster(bookingId, driverId);
+  if (trackingInterval) {
+    clearInterval(trackingInterval);
+    trackingInterval = null;
+  }
 
-  // Initial broadcast
   const broadcastLocation = () => {
+    const origin = options?.origin || DHANBAD_GARAGE_LOCATION;
+    const destination = options?.destination || DHANBAD_GARAGE_LOCATION;
     let lat = origin.latitude;
     let lng = origin.longitude;
     let heading = 45;
-    let speed = 40;
+    let speed = 35;
 
-    // Check if browser geolocation is actively providing coordinates
+    // Check device hardware geolocation
     if (typeof window !== 'undefined' && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           lat = pos.coords.latitude;
           lng = pos.coords.longitude;
-          heading = pos.coords.heading || 0;
+          heading = pos.coords.heading || 45;
           speed = Math.round((pos.coords.speed || 10) * 3.6); // km/h
           sendLocationUpdate(lat, lng, pos.coords.accuracy || 10, heading, speed);
         },
         () => {
-          // If browser GPS is fixed indoors, interpolate along the trip route for realistic live demo
-          simulatedProgress = (simulatedProgress + 0.04) % 1;
-          const simLat = origin.latitude + (destination.latitude - origin.latitude) * simulatedProgress;
-          const simLng = origin.longitude + (destination.longitude - origin.longitude) * simulatedProgress;
-          sendLocationUpdate(simLat, simLng, 12, 60, 48);
+          // If indoor or testing in browser without movement, simulate realistic progression along route
+          if (options?.bookingId && options?.destination) {
+            simulatedProgress = (simulatedProgress + 0.04) % 1;
+            const simLat = origin.latitude + (destination.latitude - origin.latitude) * simulatedProgress;
+            const simLng = origin.longitude + (destination.longitude - origin.longitude) * simulatedProgress;
+            sendLocationUpdate(simLat, simLng, 12, 60, 42);
+          } else {
+            // Near Dhanbad garage
+            sendLocationUpdate(DHANBAD_GARAGE_LOCATION.latitude + 0.001, DHANBAD_GARAGE_LOCATION.longitude + 0.001, 10, 0, 0);
+          }
         },
-        { enableHighAccuracy: true, timeout: 4000 }
+        { enableHighAccuracy: true, timeout: 5000 }
       );
     } else {
-      simulatedProgress = (simulatedProgress + 0.04) % 1;
-      const simLat = origin.latitude + (destination.latitude - origin.latitude) * simulatedProgress;
-      const simLng = origin.longitude + (destination.longitude - origin.longitude) * simulatedProgress;
-      sendLocationUpdate(simLat, simLng, 12, 60, 48);
+      if (options?.bookingId && options?.destination) {
+        simulatedProgress = (simulatedProgress + 0.04) % 1;
+        const simLat = origin.latitude + (destination.latitude - origin.latitude) * simulatedProgress;
+        const simLng = origin.longitude + (destination.longitude - origin.longitude) * simulatedProgress;
+        sendLocationUpdate(simLat, simLng, 12, 60, 42);
+      } else {
+        sendLocationUpdate(DHANBAD_GARAGE_LOCATION.latitude, DHANBAD_GARAGE_LOCATION.longitude, 10, 0, 0);
+      }
     }
   };
 
@@ -97,7 +126,7 @@ export function startDriverLiveBroadcaster(
     speed: number
   ) => {
     const loc: DriverLocation = {
-      bookingId,
+      bookingId: options?.bookingId,
       driverId,
       latitude,
       longitude,
@@ -106,28 +135,56 @@ export function startDriverLiveBroadcaster(
       speed,
       updatedAt: new Date().toISOString(),
       isSharing: true,
+      dutyStatus: options?.dutyStatus || 'ON_DUTY',
     };
     await updateDriverLocation(loc);
-    if (onUpdate) onUpdate(loc);
+    if (options?.onUpdate) options.onUpdate(loc);
   };
 
   broadcastLocation();
-  trackingInterval = setInterval(broadcastLocation, 6000); // 6 second interval as recommended (5-10s)
+  // 5-6 second broadcast interval as requested for real-time tracking
+  trackingInterval = setInterval(broadcastLocation, 5000);
 
-  return () => stopDriverLiveBroadcaster(bookingId, driverId);
+  return () => stopContinuousDriverBeacon(driverId, options?.bookingId);
 }
 
-export async function stopDriverLiveBroadcaster(bookingId: string, driverId: string) {
+export async function stopContinuousDriverBeacon(driverId: string, bookingId?: string) {
   if (trackingInterval) {
     clearInterval(trackingInterval);
     trackingInterval = null;
   }
-  const existing = await getDriverLocation(bookingId);
+  const existing = await getDriverContinuousLocation(driverId);
   if (existing) {
     await updateDriverLocation({
       ...existing,
+      bookingId,
+      driverId,
       isSharing: false,
+      dutyStatus: 'OFF_DUTY',
       updatedAt: new Date().toISOString(),
     });
   }
+}
+
+/**
+ * Legacy wrapper for active trip broadcaster.
+ */
+export function startDriverLiveBroadcaster(
+  bookingId: string,
+  driverId: string,
+  origin: LocationCoordinate,
+  destination: LocationCoordinate,
+  onUpdate?: (loc: DriverLocation) => void
+): () => void {
+  return startContinuousDriverBeacon(driverId, {
+    bookingId,
+    origin,
+    destination,
+    dutyStatus: 'ON_TRIP',
+    onUpdate,
+  });
+}
+
+export async function stopDriverLiveBroadcaster(bookingId: string, driverId: string) {
+  return stopContinuousDriverBeacon(driverId, bookingId);
 }

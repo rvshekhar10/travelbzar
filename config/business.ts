@@ -62,7 +62,7 @@ export const BUSINESS_CONFIG = {
       maxFare: 3000,
     },
   },
-  maxVehicles: 2,
+  maxVehicles: 1,
 };
 
 export const DEFAULT_PRICING_CONFIG: PricingConfig = {

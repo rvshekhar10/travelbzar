@@ -172,12 +172,21 @@ export interface Driver {
   assignedVehicleId?: string;
   totalTrips?: number;
   rating?: number;
+  currentLocation?: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+    heading?: number | null;
+    speed?: number | null;
+    updatedAt: string;
+    isSharing: boolean;
+  };
   createdAt: string;
   updatedAt?: string;
 }
 
 export interface DriverLocation {
-  bookingId: string;
+  bookingId?: string;
   driverId: string;
   latitude: number;
   longitude: number;
@@ -186,6 +195,7 @@ export interface DriverLocation {
   speed?: number | null;
   updatedAt: string;
   isSharing: boolean;
+  dutyStatus?: 'ON_DUTY' | 'EN_ROUTE' | 'ON_TRIP' | 'RETURNING_TO_GARAGE' | 'OFF_DUTY';
 }
 
 export interface InAppNotification {

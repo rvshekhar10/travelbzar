@@ -16,15 +16,17 @@ import {
   getPricingConfig,
   getVehicles,
   getDrivers,
+  saveVehicle,
   updateDriverLocation,
 } from '@/lib/firebase/store';
 import { calculateFare, createPricingSnapshot } from './fareService';
+import { DHANBAD_GARAGE_LOCATION } from './locationService';
 
 // Status transition state machine
 const ALLOWED_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
   PENDING_CONFIRMATION: ['CONFIRMED', 'REJECTED', 'CANCELLED'],
-  CONFIRMED: ['DRIVER_ASSIGNED', 'CANCELLED'],
-  DRIVER_ASSIGNED: ['DRIVER_EN_ROUTE', 'CANCELLED'],
+  CONFIRMED: ['DRIVER_ASSIGNED', 'DRIVER_EN_ROUTE', 'CANCELLED'],
+  DRIVER_ASSIGNED: ['DRIVER_EN_ROUTE', 'DRIVER_ARRIVED', 'CANCELLED'],
   DRIVER_EN_ROUTE: ['DRIVER_ARRIVED', 'CANCELLED'],
   DRIVER_ARRIVED: ['TRIP_STARTED', 'CANCELLED'],
   TRIP_STARTED: ['TRIP_COMPLETED', 'CANCELLED'],
@@ -376,7 +378,29 @@ export async function updateBookingTripStatus(
   const updates: Partial<Booking> = { status: newStatus };
   const now = new Date().toISOString();
 
-  if (newStatus === 'DRIVER_ARRIVED') {
+  if (newStatus === 'DRIVER_EN_ROUTE') {
+    updates.updatedAt = now;
+    if (booking.driverId) {
+      await updateDriverLocation({
+        bookingId: booking.id,
+        driverId: booking.driverId,
+        latitude: DHANBAD_GARAGE_LOCATION.latitude,
+        longitude: DHANBAD_GARAGE_LOCATION.longitude,
+        accuracy: 10,
+        speed: 30,
+        updatedAt: now,
+        isSharing: true,
+        dutyStatus: 'EN_ROUTE',
+      });
+    }
+    await addNotification({
+      userId: booking.customerId,
+      title: 'Chauffeur Departing Garage',
+      body: `Your chauffeur ${booking.driverName || 'Driver'} is on the way from the garage in ${booking.vehicleModel || 'your cab'} (${booking.vehicleRegistrationNumber || ''}). Live GPS tracking is active!`,
+      type: 'DRIVER_ARRIVING',
+      bookingId: booking.id,
+    });
+  } else if (newStatus === 'DRIVER_ARRIVED') {
     updates.arrivedAt = now;
     await addNotification({
       userId: booking.customerId,
@@ -588,3 +612,43 @@ export async function addChargesToBooking(
 
   return { success: true };
 }
+
+/**
+ * Returns vehicle and chauffeur to the Dhanbad Garage after trip conclusion.
+ * Resets fleet status to available.
+ */
+export async function returnVehicleToGarage(
+  driverId: string,
+  vehicleId?: string
+): Promise<{ success: boolean }> {
+  const now = new Date().toISOString();
+  const vehicles = await getVehicles();
+  const targetVeh = vehicleId ? vehicles.find((v) => v.id === vehicleId) : vehicles[0];
+  if (targetVeh) {
+    await saveVehicle({
+      ...targetVeh,
+      status: 'AVAILABLE',
+    });
+  }
+
+  await updateDriverLocation({
+    driverId,
+    latitude: DHANBAD_GARAGE_LOCATION.latitude,
+    longitude: DHANBAD_GARAGE_LOCATION.longitude,
+    accuracy: 5,
+    speed: 0,
+    updatedAt: now,
+    isSharing: true,
+    dutyStatus: 'ON_DUTY',
+  });
+
+  await addNotification({
+    userId: 'all',
+    title: 'Cab Returned to Garage',
+    body: `Vehicle ${targetVeh?.registrationNumber || 'Cab'} has returned to Dhanbad Garage and is parked ready for next dispatch.`,
+    type: 'SYSTEM_ALERT',
+  });
+
+  return { success: true };
+}
+

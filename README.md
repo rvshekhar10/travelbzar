@@ -108,7 +108,7 @@ Visit [http://localhost:3001](http://localhost:3001) in your browser.
 5. The application will automatically initialize the following collections upon first run:
    - `users`: User profiles with role (`customer` | `driver` | `owner`)
    - `bookings`: Central booking lifecycle records
-   - `vehicles`: Max 2 active fleet records
+   - `vehicles`: Max 1 active fleet records
    - `drivers`: Driver profiles and assignment status
    - `pricingConfig`: Centralized business rate configurations
    - `driverLocations`: Real-time driver GPS telemetry

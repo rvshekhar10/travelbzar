@@ -13,10 +13,12 @@ import {
   checkBookingConflict,
 } from '@/services/bookingService';
 import { getBookingEvents } from '@/lib/firebase/store';
+import { useDriverLocation } from '@/hooks/useDriverLocation';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
 import { PaymentStatusBadge } from '@/components/booking/PaymentStatusBadge';
 import { FareBreakdown } from '@/components/booking/FareBreakdown';
 import { MapView } from '@/components/maps/MapView';
+import { LiveDriverMap } from '@/components/maps/LiveDriverMap';
 import { BookingEvent } from '@/types';
 import {
   Calendar,
@@ -45,6 +47,7 @@ export default function OwnerBookingDetailPage({ params }: Props) {
   const { booking, loading, refresh } = useBooking(id);
   const { vehicles } = useVehicles();
   const { drivers } = useDrivers();
+  const { location: driverLocation } = useDriverLocation(booking?.id);
 
   const [events, setEvents] = useState<BookingEvent[]>([]);
 
@@ -260,7 +263,7 @@ export default function OwnerBookingDetailPage({ params }: Props) {
               {/* Vehicle Select (Max 2 rule) */}
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
-                  Assign Vehicle (Max 2 Fleet)
+                  Assign Vehicle (Max 1 Fleet)
                 </label>
                 <select
                   value={selectedVehicleId}
@@ -333,16 +336,43 @@ export default function OwnerBookingDetailPage({ params }: Props) {
             </div>
           </div>
 
-          {/* Route Map Preview */}
+          {/* Route Map Preview / Live Chauffeur GPS */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-3">
-            <h2 className="text-sm font-extrabold uppercase text-[#061B33]">Route Schematic</h2>
-            <MapView
-              pickup={booking.pickup}
-              drop={booking.drop}
-              distanceKm={booking.distanceKm}
-              durationMinutes={booking.estimatedDurationMinutes}
-              height="h-64 sm:h-72"
-            />
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-extrabold uppercase text-[#061B33]">
+                {['DRIVER_EN_ROUTE', 'DRIVER_ARRIVED', 'TRIP_STARTED'].includes(booking.status)
+                  ? 'Live Chauffeur GPS Tracking'
+                  : 'Route Schematic'}
+              </h2>
+              {['DRIVER_EN_ROUTE', 'DRIVER_ARRIVED', 'TRIP_STARTED'].includes(booking.status) && (
+                <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                  Live GPS Tracking
+                </span>
+              )}
+            </div>
+
+            {['DRIVER_EN_ROUTE', 'DRIVER_ARRIVED', 'TRIP_STARTED'].includes(booking.status) ? (
+              <LiveDriverMap
+                bookingId={booking.id}
+                driverLocation={driverLocation}
+                pickup={booking.pickup}
+                drop={booking.drop}
+                driverName={booking.driverName}
+                driverPhone={booking.customerPhone}
+                vehicleModel={booking.vehicleModel}
+                vehicleReg={booking.vehicleRegistrationNumber}
+                height="h-64 sm:h-80"
+              />
+            ) : (
+              <MapView
+                pickup={booking.pickup}
+                drop={booking.drop}
+                distanceKm={booking.distanceKm}
+                durationMinutes={booking.estimatedDurationMinutes}
+                height="h-64 sm:h-72"
+              />
+            )}
           </div>
 
           {/* Audit Event Timeline */}

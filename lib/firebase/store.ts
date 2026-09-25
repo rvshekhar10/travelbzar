@@ -402,7 +402,7 @@ export async function saveBooking(booking: Booking): Promise<void> {
 }
 
 // ==========================================
-// DRIVER LIVE LOCATION
+// DRIVER LIVE LOCATION (Continuous & Trip-based)
 // ==========================================
 export async function updateDriverLocation(location: DriverLocation): Promise<void> {
   const payload = {
@@ -412,14 +412,53 @@ export async function updateDriverLocation(location: DriverLocation): Promise<vo
 
   if (db) {
     try {
-      await setDoc(doc(db, 'activeTrips', location.bookingId), cleanForFirestore(payload), { merge: true });
+      // 1. Save to driverLocations for continuous owner tracking
+      if (location.driverId) {
+        await setDoc(doc(db, 'driverLocations', location.driverId), cleanForFirestore(payload), { merge: true });
+        await setDoc(
+          doc(db, 'drivers', location.driverId),
+          {
+            currentLocation: {
+              latitude: location.latitude,
+              longitude: location.longitude,
+              accuracy: location.accuracy,
+              heading: location.heading,
+              speed: location.speed,
+              updatedAt: payload.updatedAt,
+              isSharing: location.isSharing,
+            },
+          },
+          { merge: true }
+        );
+      }
+
+      // 2. If part of an active booking trip, also save to activeTrips
+      if (location.bookingId) {
+        await setDoc(doc(db, 'activeTrips', location.bookingId), cleanForFirestore(payload), { merge: true });
+      }
     } catch (err) {
       console.warn('Firestore driver location fallback to local:', err);
     }
   }
 
   const state = getLocalState();
-  state.locations[location.bookingId] = payload;
+  if (location.driverId) {
+    state.locations[location.driverId] = payload;
+    if (state.drivers[location.driverId]) {
+      state.drivers[location.driverId].currentLocation = {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        accuracy: location.accuracy,
+        heading: location.heading,
+        speed: location.speed,
+        updatedAt: payload.updatedAt,
+        isSharing: location.isSharing,
+      };
+    }
+  }
+  if (location.bookingId) {
+    state.locations[location.bookingId] = payload;
+  }
   saveLocalState(state);
 }
 
@@ -436,6 +475,21 @@ export async function getDriverLocation(bookingId: string): Promise<DriverLocati
   }
   const state = getLocalState();
   return state.locations[bookingId] || null;
+}
+
+export async function getDriverContinuousLocation(driverId: string): Promise<DriverLocation | null> {
+  if (db) {
+    try {
+      const snap = await getDoc(doc(db, 'driverLocations', driverId));
+      if (snap.exists()) {
+        return snap.data() as DriverLocation;
+      }
+    } catch (err) {
+      console.info('Using local driver continuous location lookup:', err);
+    }
+  }
+  const state = getLocalState();
+  return state.locations[driverId] || null;
 }
 
 // ==========================================

@@ -26,7 +26,7 @@ export const OwnerSidebar: React.FC = () => {
     { href: '/owner', label: 'Overview', icon: LayoutDashboard },
     { href: '/owner/bookings', label: 'All Bookings', icon: CalendarDays },
     { href: '/owner/drivers', label: 'Drivers (Chauffeurs)', icon: Users },
-    { href: '/owner/vehicles', label: 'Vehicles Fleet (Max 2)', icon: Car },
+    { href: '/owner/vehicles', label: 'Vehicles Fleet (Max 1)', icon: Car },
     { href: '/owner/pricing', label: 'Rate Card & Pricing', icon: Compass },
     { href: '/owner/analytics', label: 'Reports & Revenue', icon: BarChart3 },
     { href: '/owner/notifications', label: 'Notifications', icon: Bell, badge: unreadCount },
@@ -53,11 +53,10 @@ export const OwnerSidebar: React.FC = () => {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                isActive
+              className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${isActive
                   ? 'bg-[#078A32] text-white font-semibold shadow-md'
                   : 'text-slate-300 hover:bg-[#0B223D] hover:text-white'
-              }`}
+                }`}
             >
               <div className="flex items-center gap-3">
                 <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
