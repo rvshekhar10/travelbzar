@@ -81,7 +81,7 @@ export const TravelBzarLogo: React.FC<LogoProps> = ({
                 isLight ? 'text-slate-300' : 'text-slate-600'
               }`}
             >
-              PREMIUM CAB SERVICE
+              PRIVATE CHAUFFEUR SERVICE
             </span>
             <span className="w-2.5 h-[1.5px] bg-[#078A32]/60 inline-block" />
           </div>
