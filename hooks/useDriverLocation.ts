@@ -2,7 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { DriverLocation } from '@/types';
-import { getDriverLocation, getDriverContinuousLocation, subscribeToStore } from '@/lib/firebase/store';
+import {
+  subscribeToActiveTripLocation,
+  subscribeToDriverContinuousLocation,
+  getDriverLocation,
+  getDriverContinuousLocation,
+} from '@/lib/firebase/store';
 
 export function useDriverLocation(bookingId: string | undefined) {
   const [location, setLocation] = useState<DriverLocation | null>(null);
@@ -15,23 +20,18 @@ export function useDriverLocation(bookingId: string | undefined) {
       return;
     }
 
-    let isMounted = true;
-    const fetchLocation = async () => {
-      try {
-        const loc = await getDriverLocation(bookingId);
-        if (isMounted) setLocation(loc);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
+    // Initial cache fetch
+    getDriverLocation(bookingId).then((loc) => {
+      if (loc) setLocation(loc);
+    });
 
-    fetchLocation();
-    const unsub = subscribeToStore(() => {
-      fetchLocation();
+    // Real-time reactive listener
+    const unsub = subscribeToActiveTripLocation(bookingId, (loc) => {
+      setLocation(loc);
+      setLoading(false);
     });
 
     return () => {
-      isMounted = false;
       unsub();
     };
   }, [bookingId]);
@@ -41,6 +41,7 @@ export function useDriverLocation(bookingId: string | undefined) {
 
 /**
  * Hook to track driver live location continuously (for Owner dispatch & Driver self-beacon).
+ * Synchronized in real time via Firestore onSnapshot.
  */
 export function useDriverContinuousLocation(driverId: string | undefined) {
   const [location, setLocation] = useState<DriverLocation | null>(null);
@@ -53,23 +54,18 @@ export function useDriverContinuousLocation(driverId: string | undefined) {
       return;
     }
 
-    let isMounted = true;
-    const fetchLocation = async () => {
-      try {
-        const loc = await getDriverContinuousLocation(driverId);
-        if (isMounted) setLocation(loc);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
+    // Initial lookup
+    getDriverContinuousLocation(driverId).then((loc) => {
+      if (loc) setLocation(loc);
+    });
 
-    fetchLocation();
-    const unsub = subscribeToStore(() => {
-      fetchLocation();
+    // Real-time reactive listener across devices
+    const unsub = subscribeToDriverContinuousLocation(driverId, (loc) => {
+      setLocation(loc);
+      setLoading(false);
     });
 
     return () => {
-      isMounted = false;
       unsub();
     };
   }, [driverId]);

@@ -34,6 +34,7 @@ import {
 import {
   getGarageNavigationUrl,
   DHANBAD_GARAGE_LOCATION,
+  startContinuousDriverBeacon,
 } from '@/services/locationService';
 import {
   acceptBookingByDriver,
@@ -85,6 +86,33 @@ export default function DriverDashboardPage() {
 
   // 3. Recently completed trip
   const justCompletedTrip = driverBookings.find((b) => b.status === 'TRIP_COMPLETED');
+
+  // Dynamically synchronize live GPS telemetry beacon with active trip and duty state
+  useEffect(() => {
+    if (!user?.id) return;
+
+    let duty: 'ON_DUTY' | 'EN_ROUTE' | 'ON_TRIP' | 'RETURNING_TO_GARAGE' | 'OFF_DUTY' = 'ON_DUTY';
+    if (!onDuty) {
+      duty = 'OFF_DUTY';
+    } else if (isReturningToGarage) {
+      duty = 'RETURNING_TO_GARAGE';
+    } else if (currentTrip?.status === 'DRIVER_EN_ROUTE') {
+      duty = 'EN_ROUTE';
+    } else if (currentTrip?.status === 'DRIVER_ARRIVED' || currentTrip?.status === 'TRIP_STARTED') {
+      duty = 'ON_TRIP';
+    }
+
+    const stopBeacon = startContinuousDriverBeacon(user.id, {
+      bookingId: currentTrip?.id,
+      origin: currentTrip?.pickup,
+      destination: currentTrip?.drop,
+      dutyStatus: duty,
+    });
+
+    return () => {
+      stopBeacon();
+    };
+  }, [user?.id, onDuty, isReturningToGarage, currentTrip?.id, currentTrip?.status]);
 
   // Actor payload for event log
   const actor = {

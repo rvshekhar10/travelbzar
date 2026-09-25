@@ -7,6 +7,7 @@ import { useVehicles } from '@/hooks/useVehicles';
 import { useDrivers } from '@/hooks/useDrivers';
 import { useDriverContinuousLocation } from '@/hooks/useDriverLocation';
 import { computeAnalytics } from '@/services/analyticsService';
+import { OwnerChauffeurMap } from '@/components/maps/OwnerChauffeurMap';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
 import { PaymentStatusBadge } from '@/components/booking/PaymentStatusBadge';
 import {
@@ -33,13 +34,17 @@ export default function OwnerDashboardPage() {
   const analytics = computeAnalytics(bookings);
 
   // Primary vehicle & assigned chauffeur
-  const primaryVehicle = vehicles[0];
-  const assignedDriver = primaryVehicle
-    ? drivers.find((d) => d.assignedVehicleId === primaryVehicle.id)
-    : null;
+  const primaryVehicle = vehicles[0] || null;
+  const assignedDriver =
+    (primaryVehicle ? drivers.find((d) => d.assignedVehicleId === primaryVehicle.id) : null) ||
+    (primaryVehicle?.currentDriverId ? drivers.find((d) => d.id === primaryVehicle.currentDriverId) : null) ||
+    drivers[0] ||
+    null;
 
-  // Real-time GPS location of chauffeur (continuous tracking)
-  const { location: driverBeacon } = useDriverContinuousLocation(assignedDriver?.id);
+  const activeDriverId = assignedDriver?.id || drivers[0]?.id;
+
+  // Real-time GPS location of chauffeur (continuous tracking via Firestore onSnapshot)
+  const { location: driverBeacon } = useDriverContinuousLocation(activeDriverId);
 
   // Pending bookings requiring immediate owner action
   const pendingConfirmation = bookings.filter((b) => b.status === 'PENDING_CONFIRMATION');
@@ -48,6 +53,9 @@ export default function OwnerDashboardPage() {
   const activeTripsList = bookings.filter((b) =>
     ['DRIVER_EN_ROUTE', 'DRIVER_ARRIVED', 'TRIP_STARTED'].includes(b.status)
   );
+
+  const activeBookingForDriver =
+    activeTripsList.find((b) => b.driverId === activeDriverId) || activeTripsList[0] || null;
 
   const availableVehiclesCount = vehicles.filter((v) => v.status === 'AVAILABLE').length;
   const activeDriversCount = drivers.filter((d) => d.status === 'ACTIVE').length;
@@ -340,6 +348,58 @@ export default function OwnerDashboardPage() {
         </div>
       </div>
 
+      {/* LIVE FLEET RADAR & CHAUFFEUR GPS TRACKING (CARTO BASEMAP) */}
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+          <div>
+            <h2 className="text-sm font-extrabold uppercase text-[#061B33] flex items-center gap-2">
+              <span>Live Fleet Radar & Chauffeur GPS</span>
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#42B900] opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#42B900]" />
+              </span>
+            </h2>
+            <p className="text-xs text-slate-500">
+              Real-time hardware GPS location streamed from chauffeur mobile device with true speedometer & status
+            </p>
+          </div>
+          {assignedDriver && (
+            <div className="text-left sm:text-right">
+              <span className="text-xs font-bold text-slate-800">
+                Chauffeur: <strong className="text-[#078A32]">{assignedDriver.name}</strong>
+              </span>
+              <div className="text-[11px] text-slate-500 font-mono">
+                {assignedDriver.phone} • {primaryVehicle ? `${primaryVehicle.make} ${primaryVehicle.model}` : 'Assigned Cab'}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {assignedDriver ? (
+          <OwnerChauffeurMap
+            driver={assignedDriver}
+            driverLocation={driverBeacon}
+            vehicle={primaryVehicle}
+            activeBooking={activeBookingForDriver}
+            height="h-96 sm:h-[460px]"
+          />
+        ) : (
+          <div className="p-8 text-center rounded-3xl bg-white border border-dashed border-slate-300 space-y-3 shadow-xs">
+            <Radio className="w-10 h-10 text-slate-400 mx-auto animate-pulse" />
+            <div className="text-sm font-bold text-slate-800">No Chauffeur Assigned to Fleet</div>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Please register your vehicle and assign a chauffeur to activate continuous real-time GPS telemetry on this radar.
+            </p>
+            <Link
+              href="/owner/drivers"
+              className="inline-block bg-[#078A32] hover:bg-[#056B27] text-white text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-sm"
+            >
+              Assign Chauffeur →
+            </Link>
+          </div>
+        )}
+      </div>
+
       {/* SECONDARY ROW: ACTIVE TRIPS & CHARTS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Active Trips Monitor (1 Column) */}
@@ -494,33 +554,6 @@ export default function OwnerDashboardPage() {
                 </div>
               ))}
             </div>
-
-            {/* Continuous Driver Location Sharing Status */}
-            {assignedDriver && (
-              <div className="p-3.5 rounded-2xl bg-[#061B33] text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#42B900] opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#42B900]" />
-                  </span>
-                  <span className="font-bold">
-                    Continuous Chauffeur GPS:{' '}
-                    <strong className="text-[#42B900]">{assignedDriver.name}</strong> ({assignedDriver.phone})
-                  </span>
-                </div>
-
-                <div className="text-[11px] font-mono text-slate-300 flex items-center gap-3">
-                  <span>
-                    Lat: {driverBeacon?.latitude ? driverBeacon.latitude.toFixed(4) : '23.7957'}, Lng:{' '}
-                    {driverBeacon?.longitude ? driverBeacon.longitude.toFixed(4) : '86.4304'}
-                  </span>
-                  <span className="text-emerald-400 font-bold">Speed: {driverBeacon?.speed || 0} km/h</span>
-                  <span className="bg-[#0B223D] px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-200">
-                    {driverBeacon?.dutyStatus || 'ON DUTY'}
-                  </span>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>

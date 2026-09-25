@@ -9,6 +9,7 @@ import {
   query,
   where,
   orderBy,
+  onSnapshot,
 } from 'firebase/firestore';
 import { db } from './config';
 import {
@@ -515,6 +516,22 @@ export async function getDriverContinuousLocation(driverId: string): Promise<Dri
       if (snap.exists()) {
         return snap.data() as DriverLocation;
       }
+      // Fallback check on drivers collection
+      const driverSnap = await getDoc(doc(db, 'drivers', driverId));
+      if (driverSnap.exists() && driverSnap.data()?.currentLocation) {
+        const cur = driverSnap.data().currentLocation;
+        return {
+          driverId,
+          latitude: cur.latitude,
+          longitude: cur.longitude,
+          accuracy: cur.accuracy || 10,
+          heading: cur.heading || 0,
+          speed: cur.speed || 0,
+          updatedAt: cur.updatedAt || new Date().toISOString(),
+          isSharing: cur.isSharing !== false,
+          dutyStatus: 'ON_DUTY',
+        };
+      }
     } catch (err) {
       console.info('Using local driver continuous location lookup:', err);
     }
@@ -522,6 +539,125 @@ export async function getDriverContinuousLocation(driverId: string): Promise<Dri
   const state = getLocalState();
   return state.locations[driverId] || null;
 }
+
+/**
+ * Real-time reactive subscription to driver's continuous GPS beacon (for Owner & Dispatch HQ).
+ * Uses Firestore onSnapshot so updates from driver mobile device reflect instantly.
+ */
+export function subscribeToDriverContinuousLocation(
+  driverId: string,
+  onUpdate: (loc: DriverLocation | null) => void
+): () => void {
+  let unsubFirestore: (() => void) | null = null;
+
+  if (db) {
+    try {
+      unsubFirestore = onSnapshot(
+        doc(db, 'driverLocations', driverId),
+        (snap) => {
+          if (snap.exists()) {
+            onUpdate(snap.data() as DriverLocation);
+          } else {
+            // Check drivers collection fallback
+            getDoc(doc(db!, 'drivers', driverId))
+              .then((dSnap) => {
+                if (dSnap.exists() && dSnap.data()?.currentLocation) {
+                  const cur = dSnap.data().currentLocation;
+                  onUpdate({
+                    driverId,
+                    latitude: cur.latitude,
+                    longitude: cur.longitude,
+                    accuracy: cur.accuracy || 10,
+                    heading: cur.heading || 0,
+                    speed: cur.speed || 0,
+                    updatedAt: cur.updatedAt || new Date().toISOString(),
+                    isSharing: cur.isSharing !== false,
+                    dutyStatus: 'ON_DUTY',
+                  });
+                } else {
+                  onUpdate(null);
+                }
+              })
+              .catch(() => onUpdate(null));
+          }
+        },
+        (error) => {
+          console.warn('Real-time driver location snapshot warning:', error);
+        }
+      );
+    } catch (err) {
+      console.warn('Failed to bind Firestore real-time listener for driver location:', err);
+    }
+  }
+
+  // Also subscribe to in-tab local events
+  const unsubLocal = subscribeToStore(() => {
+    const state = getLocalState();
+    if (state.locations[driverId]) {
+      onUpdate(state.locations[driverId]);
+    }
+  });
+
+  return () => {
+    if (unsubFirestore) {
+      try {
+        unsubFirestore();
+      } catch {
+        // cleanup ignore
+      }
+    }
+    unsubLocal();
+  };
+}
+
+/**
+ * Real-time reactive subscription to an active trip's driver GPS location (for Customer booking view).
+ */
+export function subscribeToActiveTripLocation(
+  bookingId: string,
+  onUpdate: (loc: DriverLocation | null) => void
+): () => void {
+  let unsubFirestore: (() => void) | null = null;
+
+  if (db) {
+    try {
+      unsubFirestore = onSnapshot(
+        doc(db, 'activeTrips', bookingId),
+        (snap) => {
+          if (snap.exists()) {
+            onUpdate(snap.data() as DriverLocation);
+          } else {
+            onUpdate(null);
+          }
+        },
+        (error) => {
+          console.warn('Real-time active trip snapshot warning:', error);
+        }
+      );
+    } catch (err) {
+      console.warn('Failed to bind Firestore real-time listener for active trip:', err);
+    }
+  }
+
+  const unsubLocal = subscribeToStore(() => {
+    const state = getLocalState();
+    if (state.locations[bookingId]) {
+      onUpdate(state.locations[bookingId]);
+    }
+  });
+
+  return () => {
+    if (unsubFirestore) {
+      try {
+        unsubFirestore();
+      } catch {
+        // cleanup ignore
+      }
+    }
+    unsubLocal();
+  };
+}
+
 
 // ==========================================
 // IN-APP NOTIFICATIONS

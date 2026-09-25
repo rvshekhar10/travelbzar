@@ -1,8 +1,9 @@
 import { DriverLocation, LocationCoordinate } from '@/types';
-import { updateDriverLocation, getDriverLocation, getDriverContinuousLocation } from '@/lib/firebase/store';
+import { updateDriverLocation, getDriverContinuousLocation } from '@/lib/firebase/store';
 
 let trackingInterval: NodeJS.Timeout | null = null;
-let simulatedProgress = 0.05; // 0 to 1 progress along route
+let trackingWatchId: number | null = null;
+let lastFix: { lat: number; lng: number; timestamp: number; speed: number; heading: number } | null = null;
 
 export const DHANBAD_GARAGE_LOCATION: LocationCoordinate = {
   address: 'Travel BZAR Garage, Bank More, Dhanbad, Jharkhand 826001',
@@ -15,6 +16,36 @@ export const DHANBAD_GARAGE_LOCATION: LocationCoordinate = {
  */
 export function getGarageNavigationUrl(): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${DHANBAD_GARAGE_LOCATION.latitude},${DHANBAD_GARAGE_LOCATION.longitude}`;
+}
+
+/**
+ * Calculates Great Circle / Haversine distance between two coordinates in meters.
+ */
+export function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000; // Earth radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
+ * Calculates compass bearing (heading) in degrees (0 - 360) from point A to point B.
+ */
+export function calculateBearingDegrees(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  const θ = Math.atan2(y, x);
+  return Math.round(((θ * 180) / Math.PI + 360) % 360);
 }
 
 /**
@@ -56,8 +87,8 @@ export async function getCurrentDeviceLocation(): Promise<LocationCoordinate> {
 }
 
 /**
- * Continuous Driver GPS Beacon
- * Shared continuously with Owner (and Customer during active trips/departure).
+ * Continuous Driver GPS Beacon with Real Hardware Speed & Heading Calculation.
+ * Broadcasts location live to Firestore so Owner and Customer can track chauffeur movement.
  */
 export function startContinuousDriverBeacon(
   driverId: string,
@@ -69,54 +100,15 @@ export function startContinuousDriverBeacon(
     onUpdate?: (loc: DriverLocation) => void;
   }
 ): () => void {
+  // Clear any existing active watch/interval to prevent duplicate broadcasts
+  if (trackingWatchId !== null && typeof window !== 'undefined' && navigator.geolocation) {
+    navigator.geolocation.clearWatch(trackingWatchId);
+    trackingWatchId = null;
+  }
   if (trackingInterval) {
     clearInterval(trackingInterval);
     trackingInterval = null;
   }
-
-  const broadcastLocation = () => {
-    const origin = options?.origin || DHANBAD_GARAGE_LOCATION;
-    const destination = options?.destination || DHANBAD_GARAGE_LOCATION;
-    let lat = origin.latitude;
-    let lng = origin.longitude;
-    let heading = 45;
-    let speed = 35;
-
-    // Check device hardware geolocation
-    if (typeof window !== 'undefined' && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          lat = pos.coords.latitude;
-          lng = pos.coords.longitude;
-          heading = pos.coords.heading || 45;
-          speed = Math.round((pos.coords.speed || 10) * 3.6); // km/h
-          sendLocationUpdate(lat, lng, pos.coords.accuracy || 10, heading, speed);
-        },
-        () => {
-          // If indoor or testing in browser without movement, simulate realistic progression along route
-          if (options?.bookingId && options?.destination) {
-            simulatedProgress = (simulatedProgress + 0.04) % 1;
-            const simLat = origin.latitude + (destination.latitude - origin.latitude) * simulatedProgress;
-            const simLng = origin.longitude + (destination.longitude - origin.longitude) * simulatedProgress;
-            sendLocationUpdate(simLat, simLng, 12, 60, 42);
-          } else {
-            // Near Dhanbad garage
-            sendLocationUpdate(DHANBAD_GARAGE_LOCATION.latitude + 0.001, DHANBAD_GARAGE_LOCATION.longitude + 0.001, 10, 0, 0);
-          }
-        },
-        { enableHighAccuracy: true, timeout: 5000 }
-      );
-    } else {
-      if (options?.bookingId && options?.destination) {
-        simulatedProgress = (simulatedProgress + 0.04) % 1;
-        const simLat = origin.latitude + (destination.latitude - origin.latitude) * simulatedProgress;
-        const simLng = origin.longitude + (destination.longitude - origin.longitude) * simulatedProgress;
-        sendLocationUpdate(simLat, simLng, 12, 60, 42);
-      } else {
-        sendLocationUpdate(DHANBAD_GARAGE_LOCATION.latitude, DHANBAD_GARAGE_LOCATION.longitude, 10, 0, 0);
-      }
-    }
-  };
 
   const sendLocationUpdate = async (
     latitude: number,
@@ -141,18 +133,125 @@ export function startContinuousDriverBeacon(
     if (options?.onUpdate) options.onUpdate(loc);
   };
 
-  broadcastLocation();
-  // 5-6 second broadcast interval as requested for real-time tracking
-  trackingInterval = setInterval(broadcastLocation, 5000);
+  /**
+   * Processes a live position reading from the device GPS chip.
+   * Calculates realistic speed (0 km/h when stationary) and bearing.
+   */
+  const handlePosition = (pos: GeolocationPosition) => {
+    const now = Date.now();
+    const { latitude, longitude, accuracy } = pos.coords;
+
+    let computedSpeed = 0;
+    let computedHeading = lastFix?.heading ?? 0;
+
+    // 1. Evaluate speed
+    // If device provides pos.coords.speed (in m/s):
+    if (typeof pos.coords.speed === 'number' && !isNaN(pos.coords.speed) && pos.coords.speed !== null) {
+      if (pos.coords.speed > 0.4) {
+        // Moving faster than ~1.4 km/h -> real movement
+        computedSpeed = Math.round(pos.coords.speed * 3.6);
+      } else {
+        // Stationary / stopped at red light / parked -> 0 km/h
+        computedSpeed = 0;
+      }
+    } else if (lastFix) {
+      // 2. Hardware didn't supply speed (common on desktop/certain mobile browsers)
+      // Derive speed from coordinate displacement / elapsed time
+      const distMeters = calculateDistanceMeters(lastFix.lat, lastFix.lng, latitude, longitude);
+      const deltaSec = (now - lastFix.timestamp) / 1000;
+
+      // Discard GPS jitter noise (< 5 meters drift when vehicle is stationary)
+      if (distMeters < 5 || deltaSec < 0.8) {
+        computedSpeed = 0;
+      } else {
+        const rawSpeed = Math.round((distMeters / deltaSec) * 3.6);
+        // Cap at 130 km/h to discard GPS teleport spikes
+        computedSpeed = rawSpeed > 130 ? 0 : rawSpeed;
+      }
+    } else {
+      // First fix: vehicle assumed stationary at start
+      computedSpeed = 0;
+    }
+
+    // 3. Evaluate heading
+    if (
+      typeof pos.coords.heading === 'number' &&
+      !isNaN(pos.coords.heading) &&
+      pos.coords.heading !== null &&
+      pos.coords.heading >= 0
+    ) {
+      computedHeading = Math.round(pos.coords.heading);
+    } else if (lastFix && computedSpeed > 2) {
+      computedHeading = calculateBearingDegrees(lastFix.lat, lastFix.lng, latitude, longitude);
+    }
+
+    lastFix = {
+      lat: latitude,
+      lng: longitude,
+      timestamp: now,
+      speed: computedSpeed,
+      heading: computedHeading,
+    };
+
+    sendLocationUpdate(latitude, longitude, accuracy || 8, computedHeading, computedSpeed);
+  };
+
+  const handlePositionError = () => {
+    // If GPS permission is blocked or unavailable, broadcast Dhanbad garage base as stationary
+    const baseLat = DHANBAD_GARAGE_LOCATION.latitude;
+    const baseLng = DHANBAD_GARAGE_LOCATION.longitude;
+    sendLocationUpdate(baseLat, baseLng, 15, 0, 0);
+  };
+
+  // 1. Initial immediate location check
+  if (typeof window !== 'undefined' && navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(handlePosition, handlePositionError, {
+      enableHighAccuracy: true,
+      timeout: 8000,
+      maximumAge: 2000,
+    });
+
+    // 2. Continuous real-time movement streaming via watchPosition
+    try {
+      trackingWatchId = navigator.geolocation.watchPosition(handlePosition, handlePositionError, {
+        enableHighAccuracy: true,
+        maximumAge: 2000,
+        timeout: 10000,
+      });
+    } catch (err) {
+      console.warn('Geolocation watchPosition unavailable:', err);
+    }
+
+    // 3. Periodic heartbeat interval (every 4s) so stationary status (0 km/h) & timestamp stay fresh in Firestore
+    trackingInterval = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(handlePosition, handlePositionError, {
+        enableHighAccuracy: true,
+        timeout: 4000,
+        maximumAge: 3000,
+      });
+    }, 4000);
+  } else {
+    handlePositionError();
+  }
 
   return () => stopContinuousDriverBeacon(driverId, options?.bookingId);
 }
 
 export async function stopContinuousDriverBeacon(driverId: string, bookingId?: string) {
+  if (trackingWatchId !== null && typeof window !== 'undefined' && navigator.geolocation) {
+    try {
+      navigator.geolocation.clearWatch(trackingWatchId);
+    } catch {
+      // ignore
+    }
+    trackingWatchId = null;
+  }
   if (trackingInterval) {
     clearInterval(trackingInterval);
     trackingInterval = null;
   }
+  lastFix = null;
+
   const existing = await getDriverContinuousLocation(driverId);
   if (existing) {
     await updateDriverLocation({
@@ -161,6 +260,7 @@ export async function stopContinuousDriverBeacon(driverId: string, bookingId?: s
       driverId,
       isSharing: false,
       dutyStatus: 'OFF_DUTY',
+      speed: 0,
       updatedAt: new Date().toISOString(),
     });
   }
