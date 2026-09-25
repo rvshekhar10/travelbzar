@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/authContext';
 import { OwnerSidebar } from '@/components/common/OwnerSidebar';
+import { OwnerTopBar } from '@/components/common/OwnerTopBar';
 import { OwnerPWAInstallPrompt } from '@/components/common/OwnerPWAInstallPrompt';
 import { ShieldAlert, Loader2 } from 'lucide-react';
 import Link from 'next/link';
@@ -68,9 +69,12 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
   return (
     <>
       <link rel="manifest" href="/owner-manifest.json" />
-      <div className="flex min-h-[calc(100vh-5rem)]">
-        <OwnerSidebar />
-        <div className="flex-1 bg-[#F5F7F5] overflow-y-auto">{children}</div>
+      <div className="min-h-screen bg-[#F5F7F5] flex flex-col">
+        <OwnerTopBar />
+        <div className="flex flex-1 overflow-hidden">
+          <OwnerSidebar />
+          <div className="flex-1 bg-[#F5F7F5] overflow-y-auto">{children}</div>
+        </div>
       </div>
       <OwnerPWAInstallPrompt />
     </>

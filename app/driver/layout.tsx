@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/authContext';
 import { DriverPWAInstallPrompt } from '@/components/common/DriverPWAInstallPrompt';
+import { DriverTopBar } from '@/components/common/DriverTopBar';
 import { startContinuousDriverBeacon } from '@/services/locationService';
 import { Car, Loader2 } from 'lucide-react';
 import Link from 'next/link';
@@ -80,7 +81,10 @@ export default function DriverLayout({ children }: { children: React.ReactNode }
   return (
     <>
       <link rel="manifest" href="/driver-manifest.json" />
-      <div className="min-h-[calc(100vh-5rem)] bg-[#F5F7F5]">{children}</div>
+      <div className="min-h-screen bg-[#F5F7F5] flex flex-col">
+        <DriverTopBar />
+        <main className="flex-1 overflow-y-auto">{children}</main>
+      </div>
       <DriverPWAInstallPrompt />
     </>
   );

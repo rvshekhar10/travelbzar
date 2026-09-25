@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   CalendarDays,
@@ -13,13 +13,15 @@ import {
   Bell,
   Settings,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useAuth } from '@/lib/firebase/authContext';
 
 export const OwnerSidebar: React.FC = () => {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const router = useRouter();
+  const { user, logout } = useAuth();
   const { unreadCount } = useNotifications(user?.id);
 
   const links = [
@@ -35,7 +37,7 @@ export const OwnerSidebar: React.FC = () => {
   ];
 
   return (
-    <aside className="hidden md:flex flex-col w-64 bg-[#061B33] text-white border-r border-[#0B223D] min-h-[calc(100vh-5rem)] shrink-0">
+    <aside className="hidden md:flex flex-col w-64 bg-[#061B33] text-white border-r border-[#0B223D] min-h-[calc(100vh-3.5rem)] shrink-0">
       <div className="p-4 border-b border-[#0B223D]">
         <div className="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-1">
           Operations Control
@@ -82,6 +84,33 @@ export const OwnerSidebar: React.FC = () => {
         <p className="text-slate-400 leading-relaxed text-[11px]">
           Conflict engine auto-enforces 30-min buffer between trips.
         </p>
+      </div>
+
+      {/* Owner Profile & Logout Footer */}
+      <div className="p-3 m-3 border-t border-[#0B223D]">
+        <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-[#041224] border border-[#0B223D]">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-[#078A32] text-white flex items-center justify-center font-extrabold text-xs shrink-0">
+              {(user?.name || user?.email || 'O')[0].toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-white truncate">{user?.name || 'Administrator'}</p>
+              <p className="text-[10px] text-slate-400 truncate">{user?.email}</p>
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              if (confirm('Sign out of Owner Command Center?')) {
+                await logout();
+                router.push('/owner/login');
+              }
+            }}
+            title="Sign out of Owner Console"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 transition-colors shrink-0 cursor-pointer"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </aside>
   );

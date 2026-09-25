@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/firebase/authContext';
 import { BUSINESS_CONFIG } from '@/config/business';
 import {
   Settings,
@@ -14,9 +16,13 @@ import {
   Compass,
   CheckCircle2,
   Users,
+  LogOut,
+  UserCheck,
 } from 'lucide-react';
 
 export default function OwnerSettingsPage() {
+  const { user, logout } = useAuth();
+  const router = useRouter();
   const [setupStep, setSetupStep] = useState<number>(1);
 
   return (
@@ -140,8 +146,8 @@ export default function OwnerSettingsPage() {
             <input
               type="text"
               readOnly
-              value="2 Vehicles Maximum"
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-bold text-amber-900"
+              value="1 Dedicated Cab (Active)"
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-bold text-emerald-800"
             />
           </div>
         </div>
@@ -185,6 +191,51 @@ export default function OwnerSettingsPage() {
               ACTIVE
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* OWNER ACCOUNT & SECURITY SESSION */}
+      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-4">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-wider text-[#078A32]">
+              Security & Identity
+            </span>
+            <h2 className="text-base font-extrabold text-[#061B33]">Owner Account & Session</h2>
+          </div>
+          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+            AUTHENTICATED
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+          <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+            <span className="text-slate-500 font-semibold block mb-0.5">Master Administrator Email</span>
+            <span className="font-bold text-slate-900">{user?.email || 'rvshekhar10@gmail.com'}</span>
+          </div>
+
+          <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+            <span className="text-slate-500 font-semibold block mb-0.5">Authentication Authority</span>
+            <span className="font-bold text-slate-900">Firebase Auth & Cloud Firestore</span>
+          </div>
+        </div>
+
+        <div className="pt-2 flex items-center justify-between">
+          <p className="text-xs text-slate-500">
+            To switch accounts or terminate this active administrative session on this device:
+          </p>
+          <button
+            onClick={async () => {
+              if (confirm('Are you sure you want to sign out of the Owner Command Center?')) {
+                await logout();
+                router.push('/owner/login');
+              }
+            }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all cursor-pointer shadow-xs"
+          >
+            <LogOut className="w-4 h-4 text-rose-600" />
+            <span>Sign Out of Owner Account</span>
+          </button>
         </div>
       </div>
     </div>

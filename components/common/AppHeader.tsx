@@ -22,6 +22,11 @@ export const AppHeader: React.FC = () => {
 
   const isPublic = !pathname.startsWith('/customer') && !pathname.startsWith('/driver') && !pathname.startsWith('/owner');
 
+  // Customer marketing header is not shown for driver and owner operational portals
+  if (pathname.startsWith('/owner') || pathname.startsWith('/driver')) {
+    return null;
+  }
+
   return (
     <header className="sticky top-0 z-50 bg-[#061B33] border-b border-[#0B223D] text-white shadow-md">
       {/* Top micro bar for quick business contact & reassurance */}
