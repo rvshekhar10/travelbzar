@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/firebase/authContext';
 import { useBooking } from '@/hooks/useBookings';
 import { useVehicles } from '@/hooks/useVehicles';
 import { useDrivers } from '@/hooks/useDrivers';
+import { usePricing } from '@/hooks/usePricing';
 import {
   confirmBookingByOwner,
   updateBookingTripStatus,
@@ -20,7 +21,12 @@ import { PaymentStatusBadge } from '@/components/booking/PaymentStatusBadge';
 import { FareBreakdown } from '@/components/booking/FareBreakdown';
 import { MapView } from '@/components/maps/MapView';
 import { LiveDriverMap } from '@/components/maps/LiveDriverMap';
+import { RouteItineraryView } from '@/components/booking/RouteItineraryView';
 import { BookingEvent } from '@/types';
+import {
+  getDriverAuthorizationStatus,
+  isDriverAuthorizedForVehicle,
+} from '@/services/complianceService';
 import {
   Calendar,
   Clock,
@@ -49,6 +55,7 @@ export default function OwnerBookingDetailPage({ params }: Props) {
   const { booking, loading, refresh } = useBooking(id);
   const { vehicles } = useVehicles();
   const { drivers } = useDrivers();
+  const { pricing } = usePricing();
   const { location: driverLocation } = useDriverLocation(booking?.id);
 
   const [events, setEvents] = useState<BookingEvent[]>([]);
@@ -296,6 +303,42 @@ export default function OwnerBookingDetailPage({ params }: Props) {
                     </option>
                   ))}
                 </select>
+
+                {/* Driver Authorization & Authorized Vehicle Indicator */}
+                {selectedDriverId && (() => {
+                  const driverObj = drivers.find((d) => d.id === selectedDriverId);
+                  if (!driverObj) return null;
+                  const authInfo = getDriverAuthorizationStatus(driverObj);
+                  const selectedVeh = vehicles.find((v) => v.id === selectedVehicleId);
+                  const isAuthForVeh = selectedVeh
+                    ? isDriverAuthorizedForVehicle(driverObj, selectedVeh.registrationNumber)
+                    : true;
+
+                  return (
+                    <div className="mt-2 space-y-1.5 text-xs">
+                      <div
+                        className={`p-2 rounded-xl border flex items-center justify-between ${
+                          authInfo.isExpired
+                            ? 'bg-rose-50 border-rose-300 text-rose-900 font-bold'
+                            : authInfo.isExpiringSoon
+                            ? 'bg-amber-50 border-amber-300 text-amber-900 font-semibold'
+                            : 'bg-emerald-50 border-emerald-300 text-emerald-900 font-semibold'
+                        }`}
+                      >
+                        <span>Authorization: {authInfo.label}</span>
+                        <Link href="/owner/drivers" className="underline font-bold text-[10px]">
+                          Manage
+                        </Link>
+                      </div>
+
+                      {selectedVeh && !isAuthForVeh && (
+                        <div className="p-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-[11px] font-bold">
+                          ⚠️ Chauffeur is not officially authorized for {selectedVeh.registrationNumber}. Please certify in Chauffeur settings.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Confirmed Base Fare within Range */}
@@ -370,9 +413,24 @@ export default function OwnerBookingDetailPage({ params }: Props) {
               <MapView
                 pickup={booking.pickup}
                 drop={booking.drop}
+                stops={booking.stops}
                 distanceKm={booking.distanceKm}
                 durationMinutes={booking.estimatedDurationMinutes}
+                totalHaltMinutes={booking.totalHaltMinutes}
                 height="h-64 sm:h-72"
+              />
+            )}
+
+            {booking.stops && booking.stops.length > 0 && (
+              <RouteItineraryView
+                pickup={booking.pickup}
+                drop={booking.drop}
+                stops={booking.stops}
+                distanceKm={booking.distanceKm}
+                totalHaltMinutes={booking.totalHaltMinutes}
+                totalDurationMinutes={booking.estimatedDurationMinutes}
+                pickupTime={booking.pickupTime}
+                bookingDate={booking.bookingDate}
               />
             )}
           </div>
@@ -406,7 +464,11 @@ export default function OwnerBookingDetailPage({ params }: Props) {
 
         {/* Right Column: Fare Breakdown */}
         <div className="space-y-6">
-          <FareBreakdown fare={booking.fare} bookingType={booking.bookingType} />
+          <FareBreakdown
+            fare={booking.fare}
+            bookingType={booking.bookingType}
+            pricingSnapshot={booking.pricingSnapshot}
+          />
         </div>
       </div>
 
@@ -459,12 +521,12 @@ export default function OwnerBookingDetailPage({ params }: Props) {
 
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
-                  Cleaning Charge if Car Gets Dirty (₹500 – ₹1,500)
+                  Cleaning Charge if Car Gets Dirty (₹{booking.pricingSnapshot?.cleaningMin ?? pricing?.cleaningMin ?? 500} – ₹{booking.pricingSnapshot?.cleaningMax ?? pricing?.cleaningMax ?? 1500})
                 </label>
                 <input
                   type="number"
                   min={0}
-                  max={1500}
+                  max={booking.pricingSnapshot?.cleaningMax ?? pricing?.cleaningMax ?? 1500}
                   value={cleaning}
                   onChange={(e) => setCleaning(Number(e.target.value))}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300"

@@ -19,9 +19,11 @@ import {
   Compass,
 } from 'lucide-react';
 import { BUSINESS_CONFIG } from '@/config/business';
+import { usePricing } from '@/hooks/usePricing';
 
 export default function CustomerDashboardPage() {
   const { user } = useAuth();
+  const { pricing } = usePricing();
   const { bookings, loading } = useBookings({ customerId: user?.id });
 
   // Find most relevant active or upcoming booking
@@ -168,10 +170,14 @@ export default function CustomerDashboardPage() {
                 <Clock className="w-5 h-5" />
               </div>
               <h3 className="text-sm font-bold text-slate-900">Local City Package</h3>
-              <p className="text-[11px] text-slate-500 mt-1">8 Hours / 80 KM in Dhanbad</p>
+              <p className="text-[11px] text-slate-500 mt-1">
+                {pricing?.localIncludedHours || 8} Hours / {pricing?.localIncludedKm || 80} KM in Dhanbad
+              </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-base font-black text-[#078A32]">₹2,400</span>
+              <span className="text-base font-black text-[#078A32]">
+                ₹{(pricing?.localBaseFare || 2400).toLocaleString('en-IN')}
+              </span>
               <span className="text-xs font-bold text-[#078A32]">Book →</span>
             </div>
           </Link>
@@ -189,7 +195,9 @@ export default function CustomerDashboardPage() {
               <p className="text-[11px] text-slate-500 mt-1">Direct highway transfer</p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-sm font-black text-[#F0441D]">₹3,500 – ₹4,000</span>
+              <span className="text-sm font-black text-[#F0441D]">
+                ₹{(pricing?.airports?.ranchi?.minimumFare || 3500).toLocaleString('en-IN')} – ₹{(pricing?.airports?.ranchi?.maximumFare || 4000).toLocaleString('en-IN')}
+              </span>
               <span className="text-xs font-bold text-[#F0441D]">Book →</span>
             </div>
           </Link>
@@ -207,7 +215,9 @@ export default function CustomerDashboardPage() {
               <p className="text-[11px] text-slate-500 mt-1">Direct airport transfer</p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-sm font-black text-[#F0441D]">₹3,000 – ₹3,200</span>
+              <span className="text-sm font-black text-[#F0441D]">
+                ₹{(pricing?.airports?.deoghar?.minimumFare || 3000).toLocaleString('en-IN')} – ₹{(pricing?.airports?.deoghar?.maximumFare || 3200).toLocaleString('en-IN')}
+              </span>
               <span className="text-xs font-bold text-[#F0441D]">Book →</span>
             </div>
           </Link>
@@ -225,7 +235,9 @@ export default function CustomerDashboardPage() {
               <p className="text-[11px] text-slate-500 mt-1">Andal airport transfer</p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-sm font-black text-[#F0441D]">₹2,500 – ₹3,000</span>
+              <span className="text-sm font-black text-[#F0441D]">
+                ₹{(pricing?.airports?.durgapur?.minimumFare || 2500).toLocaleString('en-IN')} – ₹{(pricing?.airports?.durgapur?.maximumFare || 3000).toLocaleString('en-IN')}
+              </span>
               <span className="text-xs font-bold text-[#F0441D]">Book →</span>
             </div>
           </Link>

@@ -21,6 +21,7 @@ import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
 import { PaymentStatusBadge } from '@/components/booking/PaymentStatusBadge';
 import { FareBreakdown } from '@/components/booking/FareBreakdown';
 import { LiveDriverMap } from '@/components/maps/LiveDriverMap';
+import { RouteItineraryView } from '@/components/booking/RouteItineraryView';
 import { PaymentMethod, PaymentStatus } from '@/types';
 import {
   Phone,
@@ -170,7 +171,9 @@ export default function DriverTripConsolePage({ params }: Props) {
   };
 
   const navUrl = getGoogleMapsNavigationUrl(
-    booking.status === 'TRIP_STARTED' ? booking.drop : booking.pickup
+    booking.status === 'TRIP_STARTED' ? booking.drop : booking.pickup,
+    booking.status === 'TRIP_STARTED' ? booking.pickup : undefined,
+    booking.status === 'TRIP_STARTED' ? booking.stops : undefined
   );
 
   const formatTimer = (totalSec: number) => {
@@ -274,6 +277,20 @@ export default function DriverTripConsolePage({ params }: Props) {
             </div>
           </div>
         </div>
+
+        {/* Multi-Stop Itinerary Details for Chauffeur */}
+        {booking.stops && booking.stops.length > 0 && (
+          <RouteItineraryView
+            pickup={booking.pickup}
+            drop={booking.drop}
+            stops={booking.stops}
+            distanceKm={booking.distanceKm}
+            totalHaltMinutes={booking.totalHaltMinutes}
+            totalDurationMinutes={booking.estimatedDurationMinutes}
+            pickupTime={booking.pickupTime}
+            bookingDate={booking.bookingDate}
+          />
+        )}
 
         {/* Quick Contact & Navigation Bar */}
         <div className="grid grid-cols-2 gap-3">
@@ -390,7 +407,11 @@ export default function DriverTripConsolePage({ params }: Props) {
       </div>
 
       {/* Itemized Fare Card */}
-      <FareBreakdown fare={booking.fare} bookingType={booking.bookingType} />
+      <FareBreakdown
+        fare={booking.fare}
+        bookingType={booking.bookingType}
+        pricingSnapshot={booking.pricingSnapshot}
+      />
 
       {/* COLLECT PAYMENT & COMPLETE TRIP MODAL */}
       {showPaymentModal && (

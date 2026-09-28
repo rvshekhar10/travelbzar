@@ -6,6 +6,7 @@ import {
   PaymentStatus,
   LocationCoordinate,
   AirportDetails,
+  RouteStop,
 } from '@/types';
 import {
   saveBooking,
@@ -130,6 +131,8 @@ export interface CreateBookingInput {
   pickupTime: string;
   pickup: LocationCoordinate;
   drop: LocationCoordinate;
+  stops?: RouteStop[];
+  totalHaltMinutes?: number;
   airport?: AirportDetails;
   distanceKm: number;
   estimatedDurationMinutes: number;
@@ -159,6 +162,10 @@ export async function createNewBooking(input: CreateBookingInput): Promise<Booki
   const vehicles = await getVehicles();
   const primaryCab = vehicles[0];
 
+  const validStops = (input.stops || []).filter(
+    (s) => s.address && s.latitude !== undefined && s.longitude !== undefined
+  );
+
   const newBooking: Booking = {
     id,
     bookingNumber,
@@ -174,6 +181,8 @@ export async function createNewBooking(input: CreateBookingInput): Promise<Booki
     pickupTime: input.pickupTime,
     pickup: input.pickup,
     drop: input.drop,
+    stops: validStops.length > 0 ? validStops : undefined,
+    totalHaltMinutes: input.totalHaltMinutes,
     airport: input.airport,
     distanceKm: Math.round(input.distanceKm * 10) / 10,
     estimatedDurationMinutes: input.estimatedDurationMinutes,
@@ -188,10 +197,11 @@ export async function createNewBooking(input: CreateBookingInput): Promise<Booki
   await saveBooking(newBooking);
 
   // Notify Owner
+  const haltsInfo = validStops.length > 0 ? ` with ${validStops.length} intermediate stops/halts` : '';
   await addNotification({
     userId: 'all',
     title: 'New Booking Request',
-    body: `${bookingNumber}: ${input.customerName} requested ${input.bookingType.replace('_', ' ')} on ${input.bookingDate} at ${input.pickupTime}.`,
+    body: `${bookingNumber}: ${input.customerName} requested ${input.bookingType.replace('_', ' ')} on ${input.bookingDate} at ${input.pickupTime}${haltsInfo}.`,
     type: 'BOOKING_REQUESTED',
     bookingId: id,
   });
@@ -202,7 +212,13 @@ export async function createNewBooking(input: CreateBookingInput): Promise<Booki
     action: 'Booking Created',
     performedBy: input.customerName,
     role: 'customer',
-    metadata: { bookingNumber, bookingType: input.bookingType, fare: fare.totalFare },
+    metadata: {
+      bookingNumber,
+      bookingType: input.bookingType,
+      fare: fare.totalFare,
+      stopsCount: validStops.length,
+      totalHaltMinutes: input.totalHaltMinutes,
+    },
   });
 
   return newBooking;

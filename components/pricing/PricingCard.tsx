@@ -28,6 +28,8 @@ export const PricingCard: React.FC<Props> = ({ pricing, showBookButton = true })
   const localBase = pricing?.localBaseFare || 2400;
   const localExtraKm = pricing?.localExtraKmRate || 14;
   const localExtraHour = pricing?.localExtraHourRate || 150;
+  const localHours = pricing?.localIncludedHours || 8;
+  const localKm = pricing?.localIncludedKm || 80;
 
   const ranchiMin = pricing?.airports.ranchi.minimumFare || 3500;
   const ranchiMax = pricing?.airports.ranchi.maximumFare || 4000;
@@ -37,6 +39,16 @@ export const PricingCard: React.FC<Props> = ({ pricing, showBookButton = true })
 
   const durgapurMin = pricing?.airports.durgapur.minimumFare || 2500;
   const durgapurMax = pricing?.airports.durgapur.maximumFare || 3000;
+
+  const waitingRate = pricing?.waitingRatePerMinute || 3;
+  const waitingFree = pricing?.waitingFreeMinutes || 15;
+  const nightAllowance = pricing?.nightCharge || 300;
+  const nightStart = pricing?.nightStart || '10 PM';
+  const nightEnd = pricing?.nightEnd || '6 AM';
+  const delayCharge = pricing?.airportDelayCharge || 500;
+  const delayMaxHours = pricing?.airportDelayMaxHours || 4;
+  const cleanMin = pricing?.cleaningMin || 500;
+  const cleanMax = pricing?.cleaningMax || 1500;
 
   return (
     <div className="bg-white rounded-3xl border-2 border-slate-200/90 shadow-xl overflow-hidden max-w-4xl mx-auto">
@@ -67,7 +79,7 @@ export const PricingCard: React.FC<Props> = ({ pricing, showBookButton = true })
                 <Clock className="w-6 h-6 stroke-[2.5]" />
               </div>
               <span className="text-xs uppercase font-extrabold tracking-wider text-slate-600">
-                8 Hours / 80 KM
+                {localHours} Hours / {localKm} KM
               </span>
 
               <div className="text-4xl sm:text-5xl font-black text-[#078A32] my-3 tracking-tight">
@@ -94,9 +106,9 @@ export const PricingCard: React.FC<Props> = ({ pricing, showBookButton = true })
               <div className="p-3 text-center bg-orange-50/50">
                 <div className="text-xs font-bold text-[#F0441D] flex items-center justify-center gap-1">
                   <Clock className="w-3.5 h-3.5" />
-                  <span>₹3 /MINUTE</span>
+                  <span>₹{waitingRate} /MINUTE</span>
                 </div>
-                <div className="text-[11px] font-bold text-slate-700 mt-0.5">15 Minutes Free Waiting</div>
+                <div className="text-[11px] font-bold text-slate-700 mt-0.5">{waitingFree} Minutes Free Waiting</div>
                 <div className="text-[10px] text-slate-500">Applicable after grace period</div>
               </div>
             </div>
@@ -163,9 +175,9 @@ export const PricingCard: React.FC<Props> = ({ pricing, showBookButton = true })
               <div className="p-3 text-center bg-orange-50/50">
                 <div className="text-xs font-bold text-[#F0441D] flex items-center justify-center gap-1">
                   <Clock className="w-3.5 h-3.5" />
-                  <span>₹3 /MINUTE</span>
+                  <span>₹{waitingRate} /MINUTE</span>
                 </div>
-                <div className="text-[11px] font-bold text-slate-700 mt-0.5">15 Minutes Free Waiting</div>
+                <div className="text-[11px] font-bold text-slate-700 mt-0.5">{waitingFree} Minutes Free Waiting</div>
                 <div className="text-[10px] text-slate-500">Applicable at all airport pickup locations</div>
               </div>
             </div>
@@ -189,7 +201,9 @@ export const PricingCard: React.FC<Props> = ({ pricing, showBookButton = true })
           </div>
 
           <div className="text-center sm:text-right">
-            <span className="text-xl font-black text-slate-900">₹500 – ₹1,500</span>
+            <span className="text-xl font-black text-slate-900">
+              ₹{cleanMin.toLocaleString('en-IN')} – ₹{cleanMax.toLocaleString('en-IN')}
+            </span>
           </div>
         </div>
 
@@ -234,13 +248,13 @@ export const PricingCard: React.FC<Props> = ({ pricing, showBookButton = true })
 
         {/* Operational Indicators 4-Columns */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="p-3 rounded-xl border border-slate-200 bg-white flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center shrink-0">
+          <div className="p-3 rounded-xl border border-amber-300 bg-amber-50/70 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 border border-amber-300 flex items-center justify-center shrink-0">
               <ParkingCircle className="w-4 h-4" />
             </div>
             <div className="text-[11px] leading-tight">
-              <span className="font-bold text-slate-800 block">PARKING, TOLL & STATE TAX</span>
-              <span className="text-slate-500 font-semibold uppercase">EXTRA</span>
+              <span className="font-bold text-amber-950 block">TOLL @ ACTUAL & PARKING</span>
+              <span className="text-amber-800 font-extrabold text-[10px]">PAYABLE BY CUSTOMER EXTRA</span>
             </div>
           </div>
 
@@ -249,8 +263,8 @@ export const PricingCard: React.FC<Props> = ({ pricing, showBookButton = true })
               <Moon className="w-4 h-4" />
             </div>
             <div className="text-[11px] leading-tight">
-              <span className="font-bold text-slate-800 block">NIGHT CHARGES (10 PM – 6 AM)</span>
-              <span className="text-[#078A32] font-black">₹300</span>
+              <span className="font-bold text-slate-800 block">NIGHT CHARGES ({nightStart} – {nightEnd})</span>
+              <span className="text-[#078A32] font-black">₹{nightAllowance.toLocaleString('en-IN')}</span>
             </div>
           </div>
 
@@ -281,8 +295,17 @@ export const PricingCard: React.FC<Props> = ({ pricing, showBookButton = true })
           <div className="leading-relaxed">
             <span className="font-bold text-[#F0441D]">Airport Flight Delay Rule: </span>
             For airport pickups, if your flight is delayed, a fixed waiting charge of{' '}
-            <span className="font-bold">₹500 covers up to 4 hours</span> of driver waiting. (Delay
-            over 4 hours subject to operational review).
+            <span className="font-bold">₹{delayCharge.toLocaleString('en-IN')} covers up to {delayMaxHours} hours</span> of driver waiting. (Delay
+            over {delayMaxHours} hours subject to operational review).
+          </div>
+        </div>
+
+        {/* Toll & Parking Policy Notice */}
+        <div className="p-3.5 rounded-xl bg-amber-50/90 border border-amber-300 text-xs text-amber-950 flex items-start gap-2.5">
+          <ParkingCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+          <div className="leading-relaxed">
+            <span className="font-bold text-amber-900">Toll & Parking Policy: </span>
+            Toll plaza charges and parking fees are strictly <span className="font-black text-amber-900">payable @ actuals by the customer</span> directly during the trip, apart from the base cab fare.
           </div>
         </div>
 

@@ -1,11 +1,15 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/authContext';
+import { useVehicles } from '@/hooks/useVehicles';
+import { useDrivers } from '@/hooks/useDrivers';
+import { checkAndTriggerComplianceAlerts } from '@/services/complianceService';
 import { OwnerSidebar } from '@/components/common/OwnerSidebar';
 import { OwnerTopBar } from '@/components/common/OwnerTopBar';
 import { OwnerPWAInstallPrompt } from '@/components/common/OwnerPWAInstallPrompt';
+import { ForcedInsuranceAlertModal } from '@/components/owner/ForcedInsuranceAlertModal';
 import { ShieldAlert, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -13,6 +17,8 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
   const { user, role, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const { vehicles, addOrUpdateVehicle } = useVehicles();
+  const { drivers } = useDrivers();
 
   const isLoginPage = pathname === '/owner/login';
 
@@ -25,6 +31,39 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       }
     }
   }, [user, role, loading, router, isLoginPage]);
+
+  // Periodic and reactive compliance check for insurance & driver authorization
+  useEffect(() => {
+    if (user && role === 'owner' && vehicles.length > 0) {
+      checkAndTriggerComplianceAlerts(vehicles, drivers, user.id);
+    }
+  }, [user, role, vehicles, drivers]);
+
+  const handleUpdateVehicleInsurance = useCallback(
+    async (
+      vehicleId: string,
+      newPolicyNumber: string,
+      newInsurer: string,
+      newExpiryDate: string
+    ) => {
+      const veh = vehicles.find((v) => v.id === vehicleId);
+      if (!veh) return { success: false, error: 'Vehicle not found' };
+      const updated = {
+        ...veh,
+        insurance: {
+          ...veh.insurance,
+          policyNumber: newPolicyNumber,
+          insurerName: newInsurer,
+          expiryDate: newExpiryDate,
+          reminderSent30Days: false,
+          forcedReminderSent10Days: false,
+        },
+        updatedAt: new Date().toISOString(),
+      };
+      return await addOrUpdateVehicle(updated);
+    },
+    [vehicles, addOrUpdateVehicle]
+  );
 
   // If on secret login page, render clean without layout shell
   if (isLoginPage) {
@@ -76,6 +115,10 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           <div className="flex-1 bg-[#F5F7F5] overflow-y-auto">{children}</div>
         </div>
       </div>
+      <ForcedInsuranceAlertModal
+        vehicles={vehicles}
+        onUpdateVehicleInsurance={handleUpdateVehicleInsurance}
+      />
       <OwnerPWAInstallPrompt />
     </>
   );

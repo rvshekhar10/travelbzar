@@ -178,7 +178,13 @@ export function createPricingSnapshot(config: PricingConfig): PricingSnapshot {
     extraKmRate: config.localExtraKmRate,
     extraHourRate: config.localExtraHourRate,
     waitingRate: config.waitingRatePerMinute,
+    waitingFreeMinutes: config.waitingFreeMinutes,
     nightCharge: config.nightCharge,
+    nightStart: config.nightStart,
+    nightEnd: config.nightEnd,
     airportDelayCharge: config.airportDelayCharge,
+    airportDelayMaxHours: config.airportDelayMaxHours,
+    cleaningMin: config.cleaningMin,
+    cleaningMax: config.cleaningMax,
   };
 }

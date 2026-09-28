@@ -157,14 +157,14 @@ export default function DigitalReceiptPage({ params }: Props) {
 
           {booking.fare.tollCharge > 0 && (
             <div className="flex justify-between text-slate-600">
-              <span>Toll Plaza Charges</span>
+              <span>Toll Plaza Charges (At Actuals)</span>
               <span className="font-bold">+₹{booking.fare.tollCharge.toLocaleString('en-IN')}</span>
             </div>
           )}
 
           {booking.fare.parkingCharge > 0 && (
             <div className="flex justify-between text-slate-600">
-              <span>Parking Charges</span>
+              <span>Parking Charges (At Actuals)</span>
               <span className="font-bold">+₹{booking.fare.parkingCharge.toLocaleString('en-IN')}</span>
             </div>
           )}

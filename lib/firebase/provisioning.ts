@@ -20,6 +20,11 @@ export async function provisionUserAccount(params: {
     licenseNumber: string;
     licenseExpiry: string;
     assignedVehicleId?: string;
+    authorizationStartDate?: string;
+    authorizationExpiryDate?: string;
+    authorizationDurationMonths?: number;
+    authorizedVehicleIds?: string[];
+    authorizedVehicleNumbers?: string[];
   };
 }): Promise<{ success: boolean; uid?: string; error?: string }> {
   const cleanEmail = params.email.trim().toLowerCase();
@@ -60,6 +65,22 @@ export async function provisionUserAccount(params: {
           licenseExpiry: params.driverDetails.licenseExpiry,
           status: 'ACTIVE',
           assignedVehicleId: params.driverDetails.assignedVehicleId,
+          authorizationStartDate: params.driverDetails.authorizationStartDate || now.split('T')[0],
+          authorizationExpiryDate: params.driverDetails.authorizationExpiryDate,
+          authorizationDurationMonths: params.driverDetails.authorizationDurationMonths || 3,
+          authorizedVehicleIds: params.driverDetails.authorizedVehicleIds || (params.driverDetails.assignedVehicleId ? [params.driverDetails.assignedVehicleId] : []),
+          authorizedVehicleNumbers: params.driverDetails.authorizedVehicleNumbers || [],
+          authorizationHistory: [
+            {
+              renewedAt: now,
+              renewedBy: 'owner',
+              validFrom: params.driverDetails.authorizationStartDate || now.split('T')[0],
+              validUntil: params.driverDetails.authorizationExpiryDate || '',
+              durationMonths: params.driverDetails.authorizationDurationMonths || 3,
+              authorizedVehicleNumbers: params.driverDetails.authorizedVehicleNumbers || [],
+              notes: 'Initial Chauffeur Onboarding & Authorization Provisioning',
+            },
+          ],
           totalTrips: 0,
           rating: 5.0,
           createdAt: now,

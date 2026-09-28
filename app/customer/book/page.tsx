@@ -5,15 +5,22 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/authContext';
 import { usePricing } from '@/hooks/usePricing';
 import { useVehicles } from '@/hooks/useVehicles';
-import { BookingType, LocationCoordinate, AirportDetails, Booking } from '@/types';
+import { BookingType, LocationCoordinate, AirportDetails, Booking, RouteStop } from '@/types';
 import { BUSINESS_CONFIG } from '@/config/business';
-import { calculateRouteDistance, getPresetLocations } from '@/services/mapService';
+import {
+  calculateRouteDistance,
+  calculateMultiStopRouteDistance,
+  getPresetLocations,
+  RouteLeg,
+} from '@/services/mapService';
 import { calculateFare } from '@/services/fareService';
 import { createNewBooking } from '@/services/bookingService';
 import { getCurrentDeviceLocation } from '@/services/locationService';
 import { MapView } from '@/components/maps/MapView';
 import { LocationPickerMap } from '@/components/maps/LocationPickerMap';
 import { FareBreakdown } from '@/components/booking/FareBreakdown';
+import { RouteItineraryPlanner } from '@/components/booking/RouteItineraryPlanner';
+import { RouteItineraryView } from '@/components/booking/RouteItineraryView';
 import {
   Car,
   Plane,
@@ -100,6 +107,10 @@ function BookCabContent() {
   // Calculated Route & Fare
   const [distanceKm, setDistanceKm] = useState<number>(150);
   const [durationMinutes, setDurationMinutes] = useState<number>(210);
+  const [drivingDurationMinutes, setDrivingDurationMinutes] = useState<number>(210);
+  const [totalHaltMinutes, setTotalHaltMinutes] = useState<number>(0);
+  const [stops, setStops] = useState<RouteStop[]>([]);
+  const [routeLegs, setRouteLegs] = useState<RouteLeg[]>([]);
 
   // Update locations when airport or booking type changes
   useEffect(() => {
@@ -133,15 +144,18 @@ function BookCabContent() {
     }
   }, [bookingType, selectedAirportCode]);
 
-  // Recalculate route whenever pickup/drop changes
+  // Recalculate route whenever pickup/drop/stops change
   useEffect(() => {
     let isCurrent = true;
     const calculate = async () => {
       try {
-        const route = await calculateRouteDistance(pickup, drop);
+        const route = await calculateMultiStopRouteDistance(pickup, stops, drop);
         if (isCurrent) {
           setDistanceKm(route.distanceKm);
-          setDurationMinutes(route.durationMinutes);
+          setDrivingDurationMinutes(route.drivingDurationMinutes);
+          setTotalHaltMinutes(route.totalHaltMinutes);
+          setDurationMinutes(route.totalDurationMinutes);
+          setRouteLegs(route.legs);
         }
       } catch (e) {
         console.info('Route calc notice:', e);
@@ -151,7 +165,13 @@ function BookCabContent() {
     return () => {
       isCurrent = false;
     };
-  }, [pickup.latitude, pickup.longitude, drop.latitude, drop.longitude]);
+  }, [
+    pickup.latitude,
+    pickup.longitude,
+    drop.latitude,
+    drop.longitude,
+    JSON.stringify(stops.map((s) => [s.address, s.latitude, s.longitude, s.haltDurationMinutes])),
+  ]);
 
   // Compute live estimated fare
   const currentFare = calculateFare(
@@ -242,6 +262,8 @@ function BookCabContent() {
         pickupTime,
         pickup,
         drop,
+        stops: stops.length > 0 ? stops : undefined,
+        totalHaltMinutes,
         airport: airportDetails,
         distanceKm,
         estimatedDurationMinutes: durationMinutes,
@@ -465,7 +487,11 @@ function BookCabContent() {
                 <p className="text-xs text-slate-500 mt-1">Dhanbad → Ranchi, Deoghar, or Durgapur</p>
               </div>
               <div className="mt-4 pt-3 border-t border-slate-200/60 text-xs font-black text-[#F0441D]">
-                From ₹2,500
+                From ₹{Math.min(
+                  pricing?.airports?.durgapur?.minimumFare || 2500,
+                  pricing?.airports?.deoghar?.minimumFare || 3000,
+                  pricing?.airports?.ranchi?.minimumFare || 3500
+                ).toLocaleString('en-IN')}
               </div>
             </div>
 
@@ -506,10 +532,12 @@ function BookCabContent() {
                   <Clock className="w-5 h-5" />
                 </div>
                 <h3 className="text-sm font-bold text-slate-900">Local City Package</h3>
-                <p className="text-xs text-slate-500 mt-1">8 Hours / 80 KM within Dhanbad district</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {pricing?.localIncludedHours || 8} Hours / {pricing?.localIncludedKm || 80} KM within Dhanbad district
+                </p>
               </div>
               <div className="mt-4 pt-3 border-t border-slate-200/60 text-xs font-black text-[#078A32]">
-                Fixed ₹2,400 Base
+                Fixed ₹{(pricing?.localBaseFare || 2400).toLocaleString('en-IN')} Base
               </div>
             </div>
           </div>
@@ -572,9 +600,21 @@ function BookCabContent() {
               <label className="font-bold text-slate-800 block">Select Destination Airport:</label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {[
-                  { code: 'IXR', name: 'Ranchi Airport (IXR)', fare: '₹3,500 – ₹4,000' },
-                  { code: 'DGH', name: 'Deoghar Airport (DGH)', fare: '₹3,000 – ₹3,200' },
-                  { code: 'RDP', name: 'Durgapur Airport (RDP)', fare: '₹2,500 – ₹3,000' },
+                  {
+                    code: 'IXR',
+                    name: 'Ranchi Airport (IXR)',
+                    fare: `₹${(pricing?.airports?.ranchi?.minimumFare || 3500).toLocaleString('en-IN')} – ₹${(pricing?.airports?.ranchi?.maximumFare || 4000).toLocaleString('en-IN')}`,
+                  },
+                  {
+                    code: 'DGH',
+                    name: 'Deoghar Airport (DGH)',
+                    fare: `₹${(pricing?.airports?.deoghar?.minimumFare || 3000).toLocaleString('en-IN')} – ₹${(pricing?.airports?.deoghar?.maximumFare || 3200).toLocaleString('en-IN')}`,
+                  },
+                  {
+                    code: 'RDP',
+                    name: 'Durgapur Airport (RDP)',
+                    fare: `₹${(pricing?.airports?.durgapur?.minimumFare || 2500).toLocaleString('en-IN')} – ₹${(pricing?.airports?.durgapur?.maximumFare || 3000).toLocaleString('en-IN')}`,
+                  },
                 ].map((a) => (
                   <button
                     key={a.code}
@@ -752,6 +792,13 @@ function BookCabContent() {
             </div>
           </div>
 
+          {/* Route Itinerary Planner: Optional Multi-Stop & Halt Planning */}
+          <RouteItineraryPlanner
+            stops={stops}
+            onChange={setStops}
+            bookingType={bookingType}
+          />
+
           {locationError && (
             <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
@@ -855,8 +902,8 @@ function BookCabContent() {
               <span>Standard Operational Windows</span>
             </div>
             <p className="text-[11px] text-slate-500">
-              Journeys beginning during night hours (10:00 PM to 06:00 AM) include the rate-card
-              specified fixed night allowance of ₹300.
+              Journeys beginning during night hours ({pricing?.nightStart || '10:00 PM'} to {pricing?.nightEnd || '06:00 AM'}) include the rate-card
+              specified fixed night allowance of ₹{pricing?.nightCharge || 300}.
             </p>
           </div>
 
@@ -900,9 +947,25 @@ function BookCabContent() {
             <MapView
               pickup={pickup}
               drop={drop}
+              stops={stops}
               distanceKm={distanceKm}
               durationMinutes={durationMinutes}
+              totalHaltMinutes={totalHaltMinutes}
               height="h-64 sm:h-80"
+            />
+
+            {/* Complete Itinerary & Halts Timeline */}
+            <RouteItineraryView
+              pickup={pickup}
+              drop={drop}
+              stops={stops}
+              distanceKm={distanceKm}
+              drivingDurationMinutes={drivingDurationMinutes}
+              totalHaltMinutes={totalHaltMinutes}
+              totalDurationMinutes={durationMinutes}
+              pickupTime={pickupTime}
+              bookingDate={bookingDate}
+              legs={routeLegs}
             />
 
             {/* Itemized Fare Breakdown */}
@@ -1089,15 +1152,22 @@ function BookCabContent() {
 
             <div className="pt-2 border-t border-slate-700 flex items-center justify-between">
               <div>
-                <div className="text-[11px] text-slate-400">Total Calculated Booking Amount</div>
+                <div className="text-[11px] text-slate-400">Total Calculated Cab Tariff</div>
                 <div className="text-xl sm:text-2xl font-black text-[#42B900]">
                   ₹{currentFare.totalFare.toLocaleString('en-IN')}
                 </div>
               </div>
 
               <div className="text-right text-[11px] text-slate-400">
-                <span>Payment: Cash / UPI to Driver</span>
+                <span className="block font-semibold text-slate-200">Payment: Cash / UPI</span>
+                <span className="text-[10px] text-amber-300">Toll @ actual & parking extra</span>
               </div>
+            </div>
+
+            {/* Toll & Parking Notice Pill */}
+            <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-400/30 text-amber-200 text-[11px] flex items-center gap-2">
+              <span className="font-extrabold text-amber-300 shrink-0">🛣️ Note:</span>
+              <span>Toll charges @ actual and parking fees are payable by customer directly apart from the cab fare.</span>
             </div>
           </div>
 

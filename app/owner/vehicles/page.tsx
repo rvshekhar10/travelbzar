@@ -3,7 +3,22 @@
 import React, { useState } from 'react';
 import { useVehicles } from '@/hooks/useVehicles';
 import { useDrivers } from '@/hooks/useDrivers';
-import { Vehicle, VehicleStatus, VehicleAvailabilitySchedule } from '@/types';
+import {
+  Vehicle,
+  VehicleStatus,
+  VehicleAvailabilitySchedule,
+  VehiclePermit,
+  VehicleInsurance,
+} from '@/types';
+import {
+  getVehicleInsuranceStatus,
+  formatPermittedStates,
+} from '@/services/complianceService';
+import {
+  DEFAULT_PERMITTED_STATES,
+  POPULAR_INDIAN_STATES,
+  POPULAR_INSURERS,
+} from '@/config/business';
 import {
   Car,
   Plus,
@@ -16,6 +31,12 @@ import {
   Sparkles,
   Loader2,
   ShieldCheck,
+  FileText,
+  MapPin,
+  ShieldAlert,
+  AlertTriangle,
+  RefreshCw,
+  Check,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -26,10 +47,11 @@ export default function OwnerVehiclesPage() {
   const { drivers } = useDrivers();
   const [showModal, setShowModal] = useState(false);
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
+  const [renewingInsuranceVehicle, setRenewingInsuranceVehicle] = useState<Vehicle | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Form states
+  // Vehicle Basic Form states
   const [make, setMake] = useState('Hyundai');
   const [model, setModel] = useState('Venue SX');
   const [variant, setVariant] = useState('Turbo Petrol');
@@ -44,7 +66,31 @@ export default function OwnerVehiclesPage() {
   const [dailyStartTime, setDailyStartTime] = useState('06:00');
   const [dailyEndTime, setDailyEndTime] = useState('23:00');
   const [availableDays, setAvailableDays] = useState<string[]>(ALL_DAYS);
-  const [scheduleNotes, setScheduleNotes] = useState('Stationed at Dhanbad Base, available for local & airport transfers');
+  const [scheduleNotes, setScheduleNotes] = useState(
+    'Stationed at Dhanbad Base, available for local & airport transfers'
+  );
+
+  // Permit Form states
+  const [permitNumber, setPermitNumber] = useState('JH-PERMIT-2024-8842');
+  const [permitType, setPermitType] = useState('All India Tourist Permit');
+  const [permittedStates, setPermittedStates] = useState<string[]>(DEFAULT_PERMITTED_STATES);
+  const [permitExpiryDate, setPermitExpiryDate] = useState('2028-12-31');
+  const [isAllIndia, setIsAllIndia] = useState(false);
+
+  // Insurance Form states
+  const [insurancePolicyNumber, setInsurancePolicyNumber] = useState('BAJAJ-COMM-9988123');
+  const [insurerName, setInsurerName] = useState('Bajaj Allianz General Insurance');
+  const [insuranceType, setInsuranceType] = useState('COMPREHENSIVE');
+  const [insuranceExpiryDate, setInsuranceExpiryDate] = useState(() => {
+    const nextYear = new Date();
+    nextYear.setFullYear(nextYear.getFullYear() + 1);
+    return nextYear.toISOString().split('T')[0];
+  });
+
+  // Quick Insurance Renewal Modal Form states
+  const [quickPolicyNumber, setQuickPolicyNumber] = useState('');
+  const [quickInsurerName, setQuickInsurerName] = useState('Bajaj Allianz General Insurance');
+  const [quickExpiryDate, setQuickExpiryDate] = useState('');
 
   const openAddModal = () => {
     setEditingVehicleId(null);
@@ -61,6 +107,22 @@ export default function OwnerVehiclesPage() {
     setDailyEndTime('23:00');
     setAvailableDays(ALL_DAYS);
     setScheduleNotes('Stationed at Dhanbad Base, available for local & airport transfers');
+
+    // Default Permit
+    setPermitNumber(`JH-PERMIT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
+    setPermitType('All India Tourist Permit');
+    setPermittedStates(DEFAULT_PERMITTED_STATES);
+    setPermitExpiryDate('2028-12-31');
+    setIsAllIndia(false);
+
+    // Default Insurance
+    setInsurancePolicyNumber(`BAJAJ-COMM-${Math.floor(1000000 + Math.random() * 9000000)}`);
+    setInsurerName('Bajaj Allianz General Insurance');
+    setInsuranceType('COMPREHENSIVE');
+    const nextYear = new Date();
+    nextYear.setFullYear(nextYear.getFullYear() + 1);
+    setInsuranceExpiryDate(nextYear.toISOString().split('T')[0]);
+
     setError(null);
     setShowModal(true);
   };
@@ -80,8 +142,38 @@ export default function OwnerVehiclesPage() {
     setDailyEndTime(veh.availabilitySchedule?.dailyEndTime || '23:00');
     setAvailableDays(veh.availabilitySchedule?.availableDays || ALL_DAYS);
     setScheduleNotes(veh.availabilitySchedule?.notes || '');
+
+    // Existing Permit Data
+    setPermitNumber(veh.permit?.permitNumber || `JH-PERMIT-${new Date().getFullYear()}-8842`);
+    setPermitType(veh.permit?.permitType || 'All India Tourist Permit');
+    setPermittedStates(
+      veh.permit?.permittedStates && veh.permit.permittedStates.length > 0
+        ? veh.permit.permittedStates
+        : DEFAULT_PERMITTED_STATES
+    );
+    setPermitExpiryDate(veh.permit?.expiryDate || '2028-12-31');
+    setIsAllIndia(veh.permit?.isAllIndia || false);
+
+    // Existing Insurance Data
+    setInsurancePolicyNumber(veh.insurance?.policyNumber || 'BAJAJ-COMM-9988123');
+    setInsurerName(veh.insurance?.insurerName || 'Bajaj Allianz General Insurance');
+    setInsuranceType(veh.insurance?.insuranceType || 'COMPREHENSIVE');
+    const fallbackNextYear = new Date();
+    fallbackNextYear.setFullYear(fallbackNextYear.getFullYear() + 1);
+    setInsuranceExpiryDate(veh.insurance?.expiryDate || fallbackNextYear.toISOString().split('T')[0]);
+
     setError(null);
     setShowModal(true);
+  };
+
+  const openQuickInsuranceRenewal = (veh: Vehicle) => {
+    setRenewingInsuranceVehicle(veh);
+    setQuickPolicyNumber(veh.insurance?.policyNumber || '');
+    setQuickInsurerName(veh.insurance?.insurerName || 'Bajaj Allianz General Insurance');
+    const nextYear = new Date();
+    nextYear.setFullYear(nextYear.getFullYear() + 1);
+    setQuickExpiryDate(nextYear.toISOString().split('T')[0]);
+    setError(null);
   };
 
   const toggleDay = (day: string) => {
@@ -91,6 +183,16 @@ export default function OwnerVehiclesPage() {
       }
     } else {
       setAvailableDays([...availableDays, day]);
+    }
+  };
+
+  const toggleState = (st: string) => {
+    if (permittedStates.includes(st)) {
+      if (permittedStates.length > 1) {
+        setPermittedStates(permittedStates.filter((s) => s !== st));
+      }
+    } else {
+      setPermittedStates([...permittedStates, st]);
     }
   };
 
@@ -107,6 +209,24 @@ export default function OwnerVehiclesPage() {
       notes: scheduleNotes.trim(),
     };
 
+    const permitData: VehiclePermit = {
+      permitNumber: permitNumber.trim().toUpperCase(),
+      permitType: permitType.trim(),
+      permittedStates: isAllIndia ? ['All India (National)'] : permittedStates,
+      expiryDate: permitExpiryDate,
+      isAllIndia,
+      notes: `Permit registered for states: ${isAllIndia ? 'All India' : permittedStates.join(', ')}`,
+    };
+
+    const insuranceData: VehicleInsurance = {
+      policyNumber: insurancePolicyNumber.trim().toUpperCase(),
+      insurerName: insurerName.trim(),
+      insuranceType: insuranceType.trim(),
+      expiryDate: insuranceExpiryDate,
+      reminderSent30Days: false,
+      forcedReminderSent10Days: false,
+    };
+
     const targetVehicle: Vehicle = {
       id: editingVehicleId || `veh-${Date.now()}`,
       registrationNumber: regNo.toUpperCase().trim(),
@@ -118,8 +238,14 @@ export default function OwnerVehiclesPage() {
       year,
       status,
       availabilitySchedule: schedule,
-      currentDriverId: editingVehicleId ? vehicles.find((v) => v.id === editingVehicleId)?.currentDriverId : undefined,
-      createdAt: editingVehicleId ? (vehicles.find((v) => v.id === editingVehicleId)?.createdAt || new Date().toISOString()) : new Date().toISOString(),
+      permit: permitData,
+      insurance: insuranceData,
+      currentDriverId: editingVehicleId
+        ? vehicles.find((v) => v.id === editingVehicleId)?.currentDriverId
+        : undefined,
+      createdAt: editingVehicleId
+        ? vehicles.find((v) => v.id === editingVehicleId)?.createdAt || new Date().toISOString()
+        : new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
@@ -133,7 +259,42 @@ export default function OwnerVehiclesPage() {
     }
   };
 
+  // Submit Quick Insurance Renewal
+  const handleSaveQuickInsurance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renewingInsuranceVehicle) return;
+    setError(null);
+    setSaving(true);
+
+    const updatedInsurance: VehicleInsurance = {
+      ...renewingInsuranceVehicle.insurance,
+      policyNumber: quickPolicyNumber.trim().toUpperCase(),
+      insurerName: quickInsurerName.trim(),
+      expiryDate: quickExpiryDate,
+      reminderSent30Days: false,
+      forcedReminderSent10Days: false,
+    };
+
+    const updatedVehicle: Vehicle = {
+      ...renewingInsuranceVehicle,
+      insurance: updatedInsurance,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const res = await addOrUpdateVehicle(updatedVehicle);
+    setSaving(false);
+
+    if (!res.success) {
+      setError(res.error || 'Failed to renew insurance.');
+    } else {
+      setRenewingInsuranceVehicle(null);
+    }
+  };
+
   const currentVehicle = vehicles[0];
+  const insuranceStatus = currentVehicle
+    ? getVehicleInsuranceStatus(currentVehicle.insurance)
+    : null;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
@@ -144,14 +305,14 @@ export default function OwnerVehiclesPage() {
           </span>
           <h1 className="text-2xl sm:text-3xl font-black text-[#061B33]">Fleet & Vehicle Management</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Configure your 1 dedicated primary cab and its operating availability schedule in Firestore.
+            Configure primary cab specifications, state permit coverage, and car insurance policy expiry tracking.
           </p>
         </div>
 
         {vehicles.length === 0 && !loading && (
           <button
             onClick={openAddModal}
-            className="flex items-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-md transition-colors self-start sm:self-auto"
+            className="flex items-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-md transition-colors self-start sm:self-auto cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Add Primary Vehicle (0/1)</span>
@@ -171,14 +332,14 @@ export default function OwnerVehiclesPage() {
             <span>No Fleet Vehicle Registered (0 of 1 Active Vehicles)</span>
           </div>
           <p className="text-amber-800 leading-relaxed text-xs">
-            There are currently no vehicles configured in Firebase Firestore. Before rides can be booked by customers or dispatched to chauffeurs, you must register your 1 primary fleet vehicle along with its availability schedule.
+            There are currently no vehicles configured in Firebase Firestore. Register your 1 primary fleet vehicle along with its permitted states and insurance policy data to start accepting bookings.
           </p>
           <button
             onClick={openAddModal}
-            className="bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-black px-5 py-3 rounded-xl text-xs shadow-md transition-all inline-flex items-center gap-2"
+            className="bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-black px-5 py-3 rounded-xl text-xs shadow-md transition-all inline-flex items-center gap-2 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>Register Primary Vehicle & Schedule Now →</span>
+            <span>Register Primary Vehicle, Permit & Insurance →</span>
           </button>
         </div>
       ) : (
@@ -195,8 +356,9 @@ export default function OwnerVehiclesPage() {
             </span>
           </div>
 
-          {/* Active Vehicle Card */}
+          {/* ACTIVE VEHICLE CARD */}
           <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+            {/* Top row */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-2xl bg-[#061B33] text-white flex items-center justify-center font-bold text-2xl shadow-md">
@@ -207,7 +369,8 @@ export default function OwnerVehiclesPage() {
                     Verified Fleet Cab
                   </span>
                   <h2 className="text-xl sm:text-2xl font-black text-slate-900">
-                    {currentVehicle.make} {currentVehicle.model} {currentVehicle.variant ? `(${currentVehicle.variant})` : ''}
+                    {currentVehicle.make} {currentVehicle.model}{' '}
+                    {currentVehicle.variant ? `(${currentVehicle.variant})` : ''}
                   </h2>
                   <div className="font-mono text-sm font-black text-slate-700 mt-0.5">
                     {currentVehicle.registrationNumber}
@@ -231,8 +394,8 @@ export default function OwnerVehiclesPage() {
 
                 <button
                   onClick={() => openEditModal(currentVehicle)}
-                  className="p-2 text-slate-600 hover:text-[#078A32] transition-colors rounded-xl border border-slate-200 hover:border-emerald-300"
-                  title="Edit Vehicle & Schedule"
+                  className="p-2 text-slate-600 hover:text-[#078A32] transition-colors rounded-xl border border-slate-200 hover:border-emerald-300 cursor-pointer"
+                  title="Edit Vehicle, Permit & Insurance"
                 >
                   <Edit2 className="w-4 h-4" />
                 </button>
@@ -243,7 +406,7 @@ export default function OwnerVehiclesPage() {
                       removeVehicle(currentVehicle.id);
                     }
                   }}
-                  className="p-2 text-slate-400 hover:text-rose-600 transition-colors rounded-xl border border-slate-200 hover:border-rose-300"
+                  className="p-2 text-slate-400 hover:text-rose-600 transition-colors rounded-xl border border-slate-200 hover:border-rose-300 cursor-pointer"
                   title="Delete Vehicle"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -279,6 +442,145 @@ export default function OwnerVehiclesPage() {
               </div>
             </div>
 
+            {/* TWO COLUMNS: PERMIT DATA & CAR INSURANCE DATA */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* 1. VEHICLE PERMIT DATA CARD */}
+              <div className="bg-slate-50/80 rounded-2xl p-5 border border-slate-200/90 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-[#078A32]" />
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                      Vehicle Permit & Allowed States
+                    </h3>
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-500 font-mono">
+                    {currentVehicle.permit?.permitNumber || 'JH-PERMIT-2024'}
+                  </span>
+                </div>
+
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between text-[11px] pb-1 border-b border-slate-200/70">
+                    <span className="text-slate-500">Permit Type:</span>
+                    <strong className="text-slate-900">
+                      {currentVehicle.permit?.permitType || 'All India Tourist Permit'}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                      States Permitted to Travel:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(currentVehicle.permit?.permittedStates && currentVehicle.permit.permittedStates.length > 0
+                        ? currentVehicle.permit.permittedStates
+                        : DEFAULT_PERMITTED_STATES
+                      ).map((st) => (
+                        <span
+                          key={st}
+                          className="bg-emerald-100 text-emerald-900 text-[10px] font-extrabold px-2 py-0.5 rounded-lg border border-emerald-300 inline-flex items-center gap-1 shadow-2xs"
+                        >
+                          <MapPin className="w-2.5 h-2.5 text-[#078A32]" />
+                          <span>{st}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] pt-1">
+                    <span className="text-slate-500">Permit Expiry:</span>
+                    <strong className="text-slate-800">
+                      {currentVehicle.permit?.expiryDate || '2028-12-31'}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. CAR INSURANCE DATA CARD */}
+              <div
+                className={`rounded-2xl p-5 border space-y-3 ${
+                  insuranceStatus?.status === 'CRITICAL_10_DAYS' || insuranceStatus?.status === 'EXPIRED'
+                    ? 'bg-rose-50/90 border-rose-300 ring-2 ring-rose-200'
+                    : insuranceStatus?.status === 'EXPIRING_30_DAYS'
+                    ? 'bg-amber-50/90 border-amber-300'
+                    : 'bg-slate-50/80 border-slate-200/90'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck
+                      className={`w-4 h-4 ${
+                        insuranceStatus?.status === 'CRITICAL_10_DAYS' || insuranceStatus?.status === 'EXPIRED'
+                          ? 'text-rose-600'
+                          : insuranceStatus?.status === 'EXPIRING_30_DAYS'
+                          ? 'text-amber-600'
+                          : 'text-[#078A32]'
+                      }`}
+                    />
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                      Car Insurance Data
+                    </h3>
+                  </div>
+
+                  {insuranceStatus && (
+                    <span
+                      className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border ${insuranceStatus.colorClass}`}
+                    >
+                      {insuranceStatus.badgeText}
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500">Insurer:</span>
+                    <strong className="text-slate-900">
+                      {currentVehicle.insurance?.insurerName || 'Bajaj Allianz General Insurance'}
+                    </strong>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500">Policy Number:</span>
+                    <strong className="font-mono text-slate-800">
+                      {currentVehicle.insurance?.policyNumber || 'BAJAJ-COMM-9988123'}
+                    </strong>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500">Expiration Date:</span>
+                    <strong
+                      className={`font-black ${
+                        insuranceStatus?.isUrgent
+                          ? 'text-rose-700'
+                          : insuranceStatus?.isExpiring30Days
+                          ? 'text-amber-800'
+                          : 'text-[#078A32]'
+                      }`}
+                    >
+                      {currentVehicle.insurance?.expiryDate || 'N/A'}
+                    </strong>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-200/70 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-500">
+                      {insuranceStatus?.isUrgent
+                        ? '🚨 Forced alert active (<= 10 days)'
+                        : insuranceStatus?.isExpiring30Days
+                        ? '⚠️ 1 Month notice active'
+                        : 'Active Commercial Coverage'}
+                    </span>
+
+                    <button
+                      onClick={() => openQuickInsuranceRenewal(currentVehicle)}
+                      className="flex items-center gap-1 text-[11px] font-black px-3 py-1 rounded-xl text-white bg-[#061B33] hover:bg-[#0B223D] transition-colors cursor-pointer shadow-xs"
+                    >
+                      <RefreshCw className="w-3 h-3 text-[#42B900]" />
+                      <span>Renew Policy</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Operating Availability Schedule Section */}
             <div className="bg-slate-50/80 rounded-2xl p-5 border border-slate-200/80 space-y-3">
               <div className="flex items-center justify-between">
@@ -290,7 +592,7 @@ export default function OwnerVehiclesPage() {
                 </div>
                 <button
                   onClick={() => openEditModal(currentVehicle)}
-                  className="text-[11px] font-bold text-[#078A32] hover:underline"
+                  className="text-[11px] font-bold text-[#078A32] hover:underline cursor-pointer"
                 >
                   Adjust Schedule →
                 </button>
@@ -352,19 +654,21 @@ export default function OwnerVehiclesPage() {
         </div>
       )}
 
-      {/* Add / Edit Vehicle Modal */}
+      {/* ==================================================== */}
+      {/* 1. ADD / EDIT VEHICLE MODAL */}
+      {/* ==================================================== */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-4 text-xs animate-fade-in my-8">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-xl w-full shadow-2xl space-y-4 text-xs animate-fade-in my-8">
             <div>
               <span className="text-[10px] font-black uppercase text-[#078A32] tracking-wider">
                 {editingVehicleId ? 'Update Vehicle' : 'Fleet Registration (1/1)'}
               </span>
               <h3 className="text-lg font-black text-[#061B33]">
-                {editingVehicleId ? 'Edit Primary Cab & Schedule' : 'Register Primary Fleet Cab'}
+                {editingVehicleId ? 'Edit Primary Cab, Permit & Insurance' : 'Register Primary Fleet Cab'}
               </h3>
               <p className="text-slate-500 text-[11px] mt-0.5">
-                Saved directly into Firebase Firestore. Only this vehicle will be active and visible to riders.
+                Saved directly into Firebase Firestore. Configures vehicle specs, state permits, and insurance expiry alerts.
               </p>
             </div>
 
@@ -375,6 +679,7 @@ export default function OwnerVehiclesPage() {
             )}
 
             <form onSubmit={handleSaveVehicle} className="space-y-4">
+              {/* Basic Specs */}
               <div>
                 <label className="font-bold text-slate-700 block mb-1">Registration Plate Number</label>
                 <input
@@ -383,7 +688,7 @@ export default function OwnerVehiclesPage() {
                   placeholder="e.g. JH-10-BX-1001"
                   value={regNo}
                   onChange={(e) => setRegNo(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono font-bold uppercase focus:ring-2 focus:ring-[#078A32] focus:outline-hidden"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-mono font-bold uppercase focus:ring-2 focus:ring-[#078A32] focus:outline-hidden"
                 />
               </div>
 
@@ -395,7 +700,7 @@ export default function OwnerVehiclesPage() {
                     required
                     value={make}
                     onChange={(e) => setMake(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-semibold"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-semibold"
                   />
                 </div>
                 <div>
@@ -406,7 +711,7 @@ export default function OwnerVehiclesPage() {
                     placeholder="e.g. Venue SX"
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-semibold"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-semibold"
                   />
                 </div>
               </div>
@@ -419,7 +724,7 @@ export default function OwnerVehiclesPage() {
                     placeholder="e.g. Turbo Petrol"
                     value={variant}
                     onChange={(e) => setVariant(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-semibold"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-semibold"
                   />
                 </div>
                 <div>
@@ -428,7 +733,7 @@ export default function OwnerVehiclesPage() {
                     type="text"
                     value={vehicleType}
                     onChange={(e) => setVehicleType(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-semibold"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-semibold"
                   />
                 </div>
               </div>
@@ -441,7 +746,7 @@ export default function OwnerVehiclesPage() {
                     required
                     value={color}
                     onChange={(e) => setColor(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-semibold"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-semibold"
                   />
                 </div>
                 <div>
@@ -451,8 +756,156 @@ export default function OwnerVehiclesPage() {
                     required
                     value={year}
                     onChange={(e) => setYear(Number(e.target.value))}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-semibold"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-semibold"
                   />
+                </div>
+              </div>
+
+              {/* PERMIT DATA SECTION */}
+              <div className="bg-emerald-50/60 p-4 rounded-2xl border border-emerald-300 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-black text-slate-900 text-xs">
+                    <FileText className="w-4 h-4 text-[#078A32]" />
+                    <span>Permit Data (Which State Allows Vehicle)</span>
+                  </div>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isAllIndia}
+                      onChange={(e) => setIsAllIndia(e.target.checked)}
+                      className="rounded text-[#078A32] focus:ring-[#078A32] w-3.5 h-3.5"
+                    />
+                    <span className="font-bold text-slate-800 text-[11px]">All India Permit</span>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Permit Number</label>
+                    <input
+                      type="text"
+                      required
+                      value={permitNumber}
+                      onChange={(e) => setPermitNumber(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-300 font-mono uppercase bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Permit Expiry Date</label>
+                    <input
+                      type="date"
+                      required
+                      value={permitExpiryDate}
+                      onChange={(e) => setPermitExpiryDate(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-300 bg-white"
+                    />
+                  </div>
+                </div>
+
+                {!isAllIndia && (
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1 text-[11px]">
+                      Select Permitted States:
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {POPULAR_INDIAN_STATES.map((st) => {
+                        const isSelected = permittedStates.includes(st);
+                        return (
+                          <button
+                            type="button"
+                            key={st}
+                            onClick={() => toggleState(st)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#078A32] text-white border-[#078A32]'
+                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            {st}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* CAR INSURANCE DATA SECTION */}
+              <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-300 space-y-3">
+                <div className="flex items-center gap-1.5 font-black text-slate-900 text-xs">
+                  <ShieldCheck className="w-4 h-4 text-amber-700" />
+                  <span>Car Insurance Data (Expiry Alerts)</span>
+                </div>
+                <p className="text-[11px] text-slate-600">
+                  Owner automatically receives notifications <strong>1 month before</strong> expiry, and a <strong>forced alert before 10 days</strong>.
+                </p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Policy / Cover Note No.</label>
+                    <input
+                      type="text"
+                      required
+                      value={insurancePolicyNumber}
+                      onChange={(e) => setInsurancePolicyNumber(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-300 font-mono uppercase bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Insurance Company</label>
+                    <select
+                      value={insurerName}
+                      onChange={(e) => setInsurerName(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-300 bg-white"
+                    >
+                      {POPULAR_INSURERS.map((ins) => (
+                        <option key={ins} value={ins}>
+                          {ins}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Insurance Expiry Date (Policy End Date)
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={insuranceExpiryDate}
+                    onChange={(e) => setInsuranceExpiryDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold text-[#078A32] bg-white"
+                  />
+                  {insuranceExpiryDate && (
+                    <div className="mt-1 text-[11px]">
+                      {(() => {
+                        const status = getVehicleInsuranceStatus({
+                          policyNumber: insurancePolicyNumber,
+                          insurerName,
+                          expiryDate: insuranceExpiryDate,
+                        });
+                        return (
+                          <span
+                            className={`font-bold inline-block px-2 py-0.5 rounded text-[10px] ${
+                              status.isUrgent
+                                ? 'text-rose-800 bg-rose-100'
+                                : status.isExpiring30Days
+                                ? 'text-amber-900 bg-amber-100'
+                                : 'text-emerald-800 bg-emerald-100'
+                            }`}
+                          >
+                            {status.isUrgent
+                              ? `🚨 Critical Notice: Expires in ${status.daysRemaining} days (10-day forced alert active)`
+                              : status.isExpiring30Days
+                              ? `⚠️ 1 Month Notice: Expires in ${status.daysRemaining} days`
+                              : `✓ Active Policy: ${status.daysRemaining} days remaining`}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -504,7 +957,7 @@ export default function OwnerVehiclesPage() {
                               type="button"
                               key={d}
                               onClick={() => toggleDay(d)}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
                                 isSelected
                                   ? 'bg-[#078A32] text-white border-[#078A32]'
                                   : 'bg-white text-slate-600 border-slate-300'
@@ -535,17 +988,104 @@ export default function OwnerVehiclesPage() {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold"
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-5 py-2.5 rounded-xl bg-[#078A32] hover:bg-[#056B27] active:scale-95 disabled:opacity-50 text-white font-black shadow-md transition-all flex items-center gap-2"
+                  className="px-5 py-2.5 rounded-xl bg-[#078A32] hover:bg-[#056B27] active:scale-95 disabled:opacity-50 text-white font-black shadow-md transition-all flex items-center gap-2 cursor-pointer"
                 >
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />}
                   <span>{editingVehicleId ? 'Update Fleet Cab' : 'Save Primary Cab'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* 2. QUICK INSURANCE RENEWAL MODAL */}
+      {/* ==================================================== */}
+      {renewingInsuranceVehicle && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4 text-xs animate-fade-in my-8">
+            <div className="pb-2 border-b border-slate-100">
+              <span className="text-[10px] font-black uppercase text-[#078A32] tracking-wider">
+                Policy Renewal
+              </span>
+              <h3 className="text-lg font-black text-[#061B33]">
+                Renew Insurance: {renewingInsuranceVehicle.registrationNumber}
+              </h3>
+              <p className="text-slate-500 text-[11px] mt-0.5">
+                {renewingInsuranceVehicle.make} {renewingInsuranceVehicle.model}
+              </p>
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-50 text-red-800 rounded-xl border border-red-200">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveQuickInsurance} className="space-y-4">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  New Policy / Cover Note Number
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. BAJAJ-COMM-2027-001"
+                  value={quickPolicyNumber}
+                  onChange={(e) => setQuickPolicyNumber(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono uppercase bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Insurer Name</label>
+                <select
+                  value={quickInsurerName}
+                  onChange={(e) => setQuickInsurerName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                >
+                  {POPULAR_INSURERS.map((ins) => (
+                    <option key={ins} value={ins}>
+                      {ins}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">New Policy Expiry Date</label>
+                <input
+                  type="date"
+                  required
+                  value={quickExpiryDate}
+                  onChange={(e) => setQuickExpiryDate(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-bold text-[#078A32] bg-white"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setRenewingInsuranceVehicle(null)}
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-5 py-2.5 rounded-xl bg-[#078A32] hover:bg-[#056B27] active:scale-95 disabled:opacity-50 text-white font-black shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <span>Save Renewed Policy</span>
                 </button>
               </div>
             </form>

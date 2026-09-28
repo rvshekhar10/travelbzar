@@ -34,33 +34,29 @@ export const AppHeader: React.FC = () => {
         <nav className="hidden md:flex items-center gap-8 text-sm font-semibold tracking-wide text-slate-300">
           <Link
             href="/"
-            className={`transition-colors hover:text-white ${
-              pathname === '/' ? 'text-[#42B900]' : ''
-            }`}
+            className={`transition-colors hover:text-white ${pathname === '/' ? 'text-[#42B900]' : ''
+              }`}
           >
             Home
           </Link>
           <Link
             href="/pricing"
-            className={`transition-colors hover:text-white ${
-              pathname === '/pricing' ? 'text-[#42B900]' : ''
-            }`}
+            className={`transition-colors hover:text-white ${pathname === '/pricing' ? 'text-[#42B900]' : ''
+              }`}
           >
             Tariffs & Services
           </Link>
           <Link
             href="/about"
-            className={`transition-colors hover:text-white ${
-              pathname === '/about' ? 'text-[#42B900]' : ''
-            }`}
+            className={`transition-colors hover:text-white ${pathname === '/about' ? 'text-[#42B900]' : ''
+              }`}
           >
             The Experience
           </Link>
           <Link
             href="/contact"
-            className={`transition-colors hover:text-white ${
-              pathname === '/contact' ? 'text-[#42B900]' : ''
-            }`}
+            className={`transition-colors hover:text-white ${pathname === '/contact' ? 'text-[#42B900]' : ''
+              }`}
           >
             Concierge
           </Link>
@@ -110,7 +106,7 @@ export const AppHeader: React.FC = () => {
             className="flex items-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white text-xs sm:text-sm font-extrabold px-4 sm:px-5 py-2.5 rounded-xl shadow-lg transition-all shadow-emerald-950/40"
           >
             <Calendar className="w-4 h-4" />
-            <span>Reserve Chauffeur</span>
+            <span>Book Cab</span>
           </Link>
 
           {/* Mobile hamburger menu toggle */}

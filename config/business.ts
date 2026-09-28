@@ -66,6 +66,43 @@ export const BUSINESS_CONFIG = {
   maxVehicles: 1,
 };
 
+export const DEFAULT_PERMITTED_STATES = [
+  'Jharkhand',
+  'West Bengal',
+  'Bihar',
+  'Odisha',
+  'Uttar Pradesh',
+];
+
+export const POPULAR_INDIAN_STATES = [
+  'Jharkhand',
+  'West Bengal',
+  'Bihar',
+  'Odisha',
+  'Uttar Pradesh',
+  'Chhattisgarh',
+  'Delhi-NCR',
+  'Haryana',
+  'Punjab',
+  'Rajasthan',
+  'Madhya Pradesh',
+  'Maharashtra',
+  'All India (National)',
+];
+
+export const POPULAR_INSURERS = [
+  'Bajaj Allianz General Insurance',
+  'ICICI Lombard General Insurance',
+  'Tata AIG General Insurance',
+  'HDFC ERGO General Insurance',
+  'The New India Assurance Co.',
+  'National Insurance Company',
+  'United India Insurance',
+  'Reliance General Insurance',
+  'Go Digit General Insurance',
+  'SBI General Insurance',
+];
+
 export const DEFAULT_PRICING_CONFIG: PricingConfig = {
   localBaseFare: 2400,
   localIncludedHours: 8,

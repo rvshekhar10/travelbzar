@@ -70,7 +70,7 @@ export default function HomePage() {
               className="w-full sm:w-auto flex items-center justify-center gap-2.5 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-extrabold text-sm sm:text-base px-8 py-4 rounded-2xl shadow-xl transition-all shadow-emerald-950/40"
             >
               <Calendar className="w-5 h-5" />
-              <span>Reserve a Chauffeur</span>
+              <span>Book your Cab</span>
               <ArrowRight className="w-4 h-4 ml-1" />
             </Link>
 
@@ -188,7 +188,7 @@ export default function HomePage() {
                   Smooth NH-32 / NH-20 highway transit. Courteous chauffeur, 4hr delay protection, and airport terminal drop.
                 </p>
                 <div className="text-2xl font-black text-slate-900 font-mono pt-1">
-                  ₹3,500 – ₹4,000
+                  ₹{(pricing?.airports?.ranchi?.minimumFare || 3500).toLocaleString('en-IN')} – ₹{(pricing?.airports?.ranchi?.maximumFare || 4000).toLocaleString('en-IN')}
                 </div>
               </div>
 
@@ -218,7 +218,7 @@ export default function HomePage() {
                   Comfortable, direct route to Deoghar International Airport. Ideal for religious pilgrimages and executive flights.
                 </p>
                 <div className="text-2xl font-black text-slate-900 font-mono pt-1">
-                  ₹3,000 – ₹3,200
+                  ₹{(pricing?.airports?.deoghar?.minimumFare || 3000).toLocaleString('en-IN')} – ₹{(pricing?.airports?.deoghar?.maximumFare || 3200).toLocaleString('en-IN')}
                 </div>
               </div>
 
@@ -248,7 +248,7 @@ export default function HomePage() {
                   Direct GT Road highway corridor connecting Dhanbad to Andal/Durgapur airport in under 2.5 hours.
                 </p>
                 <div className="text-2xl font-black text-slate-900 font-mono pt-1">
-                  ₹2,500 – ₹3,000
+                  ₹{(pricing?.airports?.durgapur?.minimumFare || 2500).toLocaleString('en-IN')} – ₹{(pricing?.airports?.durgapur?.maximumFare || 3000).toLocaleString('en-IN')}
                 </div>
               </div>
 

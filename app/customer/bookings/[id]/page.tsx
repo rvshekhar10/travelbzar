@@ -9,6 +9,7 @@ import { PaymentStatusBadge } from '@/components/booking/PaymentStatusBadge';
 import { FareBreakdown } from '@/components/booking/FareBreakdown';
 import { LiveDriverMap } from '@/components/maps/LiveDriverMap';
 import { MapView } from '@/components/maps/MapView';
+import { RouteItineraryView } from '@/components/booking/RouteItineraryView';
 import {
   Phone,
   Calendar,
@@ -618,7 +619,7 @@ export default function CustomerBookingDetailPage({ params }: PageProps) {
               <div>
                 <span className="text-[10px] text-slate-500 block">Flight Delay</span>
                 <span className="font-bold text-[#F0441D]">
-                  {booking.airport.delayMinutes} mins (Covered under ₹500 rule)
+                  {booking.airport.delayMinutes} mins (Covered under ₹{booking.pricingSnapshot?.airportDelayCharge || 500} rule)
                 </span>
               </div>
             )}
@@ -628,17 +629,34 @@ export default function CustomerBookingDetailPage({ params }: PageProps) {
 
       {/* Planned Highway Route Map (for non-approaching states) */}
       {!isDriverApproaching && (
-        <div className="space-y-2">
+        <div className="space-y-4">
           <div className="text-xs font-extrabold text-[#061B33] uppercase tracking-wider px-1">
-            Highway Route Details
+            {booking.stops && booking.stops.length > 0
+              ? 'Multi-Stop Travel Itinerary & Route'
+              : 'Highway Route Details'}
           </div>
           <MapView
             pickup={booking.pickup}
             drop={booking.drop}
+            stops={booking.stops}
             distanceKm={booking.distanceKm}
             durationMinutes={booking.estimatedDurationMinutes}
+            totalHaltMinutes={booking.totalHaltMinutes}
             height="h-64 sm:h-72"
           />
+
+          {booking.stops && booking.stops.length > 0 && (
+            <RouteItineraryView
+              pickup={booking.pickup}
+              drop={booking.drop}
+              stops={booking.stops}
+              distanceKm={booking.distanceKm}
+              totalHaltMinutes={booking.totalHaltMinutes}
+              totalDurationMinutes={booking.estimatedDurationMinutes}
+              pickupTime={booking.pickupTime}
+              bookingDate={booking.bookingDate}
+            />
+          )}
         </div>
       )}
 
@@ -647,6 +665,7 @@ export default function CustomerBookingDetailPage({ params }: PageProps) {
         fare={booking.fare}
         bookingType={booking.bookingType}
         showEstimatedRange={booking.status === 'PENDING_CONFIRMATION'}
+        pricingSnapshot={booking.pricingSnapshot}
       />
     </div>
   );

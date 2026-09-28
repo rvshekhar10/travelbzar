@@ -70,7 +70,9 @@ export default function OwnerPricingManagementPage() {
             <h2 className="text-sm font-black text-[#078A32] uppercase tracking-wide">
               1. Local City Package (Dhanbad)
             </h2>
-            <span className="text-[11px] text-slate-400">Default: 8 Hours / 80 KM @ ₹2,400</span>
+            <span className="text-[11px] text-slate-400">
+              Active: {form.localIncludedHours} Hours / {form.localIncludedKm} KM @ ₹{form.localBaseFare?.toLocaleString('en-IN')}
+            </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -266,32 +268,47 @@ export default function OwnerPricingManagementPage() {
           </div>
         </div>
 
-        {/* 3. FLIGHT DELAY, WAITING, & NIGHT CHARGES */}
+        {/* 3. FLIGHT DELAY, WAITING, NIGHT & CLEANING CHARGES */}
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
           <h2 className="text-sm font-black text-[#061B33] uppercase tracking-wide pb-2 border-b border-slate-100">
             3. Specialized Rules & Allowances
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Flight Delay Rule */}
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
               <div className="font-bold text-slate-900">Airport Flight Delay</div>
-              <p className="text-[10px] text-slate-500">Fixed rate covering up to 4 hours delay</p>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">Fixed Charge (₹)</label>
-                <input
-                  type="number"
-                  value={form.airportDelayCharge}
-                  onChange={(e) => setForm({ ...form, airportDelayCharge: Number(e.target.value) })}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
-                />
+              <p className="text-[10px] text-slate-500">
+                Covers up to {form.airportDelayMaxHours || 4} hrs delay
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">Fixed ₹</label>
+                  <input
+                    type="number"
+                    value={form.airportDelayCharge}
+                    onChange={(e) => setForm({ ...form, airportDelayCharge: Number(e.target.value) })}
+                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">Max Delay Hrs</label>
+                  <input
+                    type="number"
+                    value={form.airportDelayMaxHours}
+                    onChange={(e) => setForm({ ...form, airportDelayMaxHours: Number(e.target.value) })}
+                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
+                  />
+                </div>
               </div>
             </div>
 
             {/* Waiting Charges */}
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-              <div className="font-bold text-slate-900">Standard Waiting Rate</div>
-              <p className="text-[10px] text-slate-500">15 mins free, then ₹3/min</p>
+              <div className="font-bold text-slate-900">Standard Waiting</div>
+              <p className="text-[10px] text-slate-500">
+                {form.waitingFreeMinutes} mins free, then ₹{form.waitingRatePerMinute}/min
+              </p>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 block mb-1">Free Mins</label>
@@ -317,15 +334,65 @@ export default function OwnerPricingManagementPage() {
             {/* Night Charges */}
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
               <div className="font-bold text-slate-900">Night Allowance</div>
-              <p className="text-[10px] text-slate-500">10 PM to 6 AM window</p>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">Fixed Charge (₹)</label>
-                <input
-                  type="number"
-                  value={form.nightCharge}
-                  onChange={(e) => setForm({ ...form, nightCharge: Number(e.target.value) })}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
-                />
+              <p className="text-[10px] text-slate-500">
+                {form.nightStart || '22:00'} to {form.nightEnd || '06:00'} window
+              </p>
+              <div className="grid grid-cols-3 gap-1.5">
+                <div className="col-span-1">
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">Fixed ₹</label>
+                  <input
+                    type="number"
+                    value={form.nightCharge}
+                    onChange={(e) => setForm({ ...form, nightCharge: Number(e.target.value) })}
+                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">Start</label>
+                  <input
+                    type="text"
+                    value={form.nightStart}
+                    onChange={(e) => setForm({ ...form, nightStart: e.target.value })}
+                    className="w-full px-1.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold text-center"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">End</label>
+                  <input
+                    type="text"
+                    value={form.nightEnd}
+                    onChange={(e) => setForm({ ...form, nightEnd: e.target.value })}
+                    className="w-full px-1.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold text-center"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Cleaning Surcharge Range */}
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+              <div className="font-bold text-slate-900">Cleaning Range</div>
+              <p className="text-[10px] text-slate-500">
+                ₹{form.cleaningMin} to ₹{form.cleaningMax} when car soiled
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">Min ₹</label>
+                  <input
+                    type="number"
+                    value={form.cleaningMin}
+                    onChange={(e) => setForm({ ...form, cleaningMin: Number(e.target.value) })}
+                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">Max ₹</label>
+                  <input
+                    type="number"
+                    value={form.cleaningMax}
+                    onChange={(e) => setForm({ ...form, cleaningMax: Number(e.target.value) })}
+                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
+                  />
+                </div>
               </div>
             </div>
           </div>

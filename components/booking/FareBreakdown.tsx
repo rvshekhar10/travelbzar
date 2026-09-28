@@ -1,15 +1,33 @@
 import React from 'react';
-import { FareCalculation, BookingType } from '@/types';
+import { FareCalculation, BookingType, PricingSnapshot } from '@/types';
 import { AlertCircle, Info, Sparkles } from 'lucide-react';
+import { usePricing } from '@/hooks/usePricing';
 
 interface Props {
   fare: FareCalculation;
   bookingType: BookingType;
   showEstimatedRange?: boolean;
+  pricingSnapshot?: PricingSnapshot;
 }
 
-export const FareBreakdown: React.FC<Props> = ({ fare, bookingType, showEstimatedRange = false }) => {
+export const FareBreakdown: React.FC<Props> = ({
+  fare,
+  bookingType,
+  showEstimatedRange = false,
+  pricingSnapshot,
+}) => {
+  const { pricing } = usePricing();
   const isAirport = bookingType !== 'LOCAL_CITY';
+
+  const includedKm = pricingSnapshot?.includedKm ?? pricing?.localIncludedKm ?? 80;
+  const includedHours = pricingSnapshot?.includedHours ?? pricing?.localIncludedHours ?? 8;
+  const extraKmRate = pricingSnapshot?.extraKmRate ?? pricing?.localExtraKmRate ?? 14;
+  const extraHourRate = pricingSnapshot?.extraHourRate ?? pricing?.localExtraHourRate ?? 150;
+  const waitRate = pricingSnapshot?.waitingRate ?? pricing?.waitingRatePerMinute ?? 3;
+  const freeMins = pricing?.waitingFreeMinutes ?? 15;
+  const nightStart = pricing?.nightStart ?? '10 PM';
+  const nightEnd = pricing?.nightEnd ?? '6 AM';
+  const delayMaxHours = pricing?.airportDelayMaxHours ?? 4;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
@@ -24,7 +42,7 @@ export const FareBreakdown: React.FC<Props> = ({ fare, bookingType, showEstimate
         {/* Base Package / Base Fare */}
         <div className="flex items-center justify-between text-slate-700">
           <span className="flex items-center gap-1.5">
-            {isAirport ? 'Base Airport Fare' : 'Local City Package (8 Hrs / 80 KM)'}
+            {isAirport ? 'Base Airport Fare' : `Local City Package (${includedHours} Hrs / ${includedKm} KM)`}
           </span>
           <span className="font-semibold text-slate-900">
             ₹{fare.baseFare.toLocaleString('en-IN')}
@@ -34,7 +52,7 @@ export const FareBreakdown: React.FC<Props> = ({ fare, bookingType, showEstimate
         {/* Local City Extra KM */}
         {fare.distanceCharge > 0 && (
           <div className="flex items-center justify-between text-slate-600 pl-2 border-l-2 border-slate-200">
-            <span>Extra Distance (above 80 km @ ₹14/km)</span>
+            <span>Extra Distance (above {includedKm} km @ ₹{extraKmRate}/km)</span>
             <span className="font-semibold text-slate-900">
               +₹{fare.distanceCharge.toLocaleString('en-IN')}
             </span>
@@ -44,7 +62,7 @@ export const FareBreakdown: React.FC<Props> = ({ fare, bookingType, showEstimate
         {/* Local City Extra Time */}
         {fare.timeCharge > 0 && (
           <div className="flex items-center justify-between text-slate-600 pl-2 border-l-2 border-slate-200">
-            <span>Extra Duration (above 8 hrs @ ₹150/hr)</span>
+            <span>Extra Duration (above {includedHours} hrs @ ₹{extraHourRate}/hr)</span>
             <span className="font-semibold text-slate-900">
               +₹{fare.timeCharge.toLocaleString('en-IN')}
             </span>
@@ -56,7 +74,7 @@ export const FareBreakdown: React.FC<Props> = ({ fare, bookingType, showEstimate
           <div className="flex items-center justify-between text-amber-900 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 text-xs">
             <span className="flex items-center gap-1 font-medium">
               <Info className="w-3.5 h-3.5 text-amber-600" />
-              Airport Flight Delay (Up to 4 Hours Fixed)
+              Airport Flight Delay (Up to {delayMaxHours} Hours Fixed)
             </span>
             <span className="font-bold">+₹{fare.airportDelayCharge.toLocaleString('en-IN')}</span>
           </div>
@@ -66,14 +84,14 @@ export const FareBreakdown: React.FC<Props> = ({ fare, bookingType, showEstimate
         {fare.isOwnerReviewRequired && (
           <div className="flex items-center gap-2 p-2.5 rounded-lg bg-orange-50 border border-orange-300 text-orange-900 text-xs font-semibold">
             <AlertCircle className="w-4 h-4 text-orange-600 shrink-0" />
-            <span>Flight delay exceeds 4 hours: OWNER REVIEW REQUIRED for custom waiting tariff.</span>
+            <span>Flight delay exceeds {delayMaxHours} hours: OWNER REVIEW REQUIRED for custom waiting tariff.</span>
           </div>
         )}
 
         {/* Waiting Charges */}
         {fare.waitingCharge > 0 && (
           <div className="flex items-center justify-between text-slate-600 pl-2 border-l-2 border-slate-200">
-            <span>Waiting Charge (after 15 free mins @ ₹3/min)</span>
+            <span>Waiting Charge (after {freeMins} free mins @ ₹{waitRate}/min)</span>
             <span className="font-semibold text-slate-900">
               +₹{fare.waitingCharge.toLocaleString('en-IN')}
             </span>
@@ -83,7 +101,7 @@ export const FareBreakdown: React.FC<Props> = ({ fare, bookingType, showEstimate
         {/* Night Charge */}
         {fare.nightCharge > 0 && (
           <div className="flex items-center justify-between text-slate-700 pl-2 border-l-2 border-indigo-200">
-            <span>Night Charge (10 PM – 6 AM fixed)</span>
+            <span>Night Charge ({nightStart} – {nightEnd} fixed)</span>
             <span className="font-semibold text-slate-900">
               +₹{fare.nightCharge.toLocaleString('en-IN')}
             </span>
@@ -139,6 +157,52 @@ export const FareBreakdown: React.FC<Props> = ({ fare, bookingType, showEstimate
             </span>
           </div>
         )}
+
+        {/* Settled Extra actuals if recorded on invoice/settlement */}
+        {(fare.tollCharge > 0 || fare.parkingCharge > 0 || fare.stateTaxCharge > 0) && (
+          <div className="pt-2 border-t border-dashed border-slate-200 space-y-1.5 text-xs text-slate-600">
+            <span className="font-bold text-slate-700 block">Settled Trip Actuals (Recorded Receipts):</span>
+            {fare.tollCharge > 0 && (
+              <div className="flex items-center justify-between pl-2">
+                <span>• Toll Plaza Receipts (at actuals)</span>
+                <span className="font-semibold text-slate-900">+₹{fare.tollCharge.toLocaleString('en-IN')}</span>
+              </div>
+            )}
+            {fare.parkingCharge > 0 && (
+              <div className="flex items-center justify-between pl-2">
+                <span>• Parking Fee Receipts (at actuals)</span>
+                <span className="font-semibold text-slate-900">+₹{fare.parkingCharge.toLocaleString('en-IN')}</span>
+              </div>
+            )}
+            {fare.stateTaxCharge > 0 && (
+              <div className="flex items-center justify-between pl-2">
+                <span>• Interstate State Tax</span>
+                <span className="font-semibold text-slate-900">+₹{fare.stateTaxCharge.toLocaleString('en-IN')}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Prominent Mandatory Exclusions & Pay-at-Actuals Notice */}
+      <div className="mt-4 p-3.5 rounded-2xl bg-amber-50/90 border border-amber-300 text-xs text-amber-950 space-y-2">
+        <div className="flex items-center gap-2 font-black text-amber-900 text-xs">
+          <Info className="w-4 h-4 text-amber-700 shrink-0" />
+          <span>Payable by Customer Apart From Cab Fare:</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-amber-900/90">
+          <div className="flex items-center gap-1.5 bg-white/70 px-2.5 py-1.5 rounded-xl border border-amber-200">
+            <span className="font-black text-amber-800">🛣️ Toll Charges:</span>
+            <span className="font-bold">@ Actual</span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-white/70 px-2.5 py-1.5 rounded-xl border border-amber-200">
+            <span className="font-black text-amber-800">🅿️ Parking Fee:</span>
+            <span className="font-bold">@ Actual</span>
+          </div>
+        </div>
+        <p className="text-[10px] text-amber-800 leading-tight">
+          * Toll plaza fees and parking fees are not included in the cab fare tariff and must be paid by the customer directly as incurred.
+        </p>
       </div>
 
       {/* Estimated range indicator if prior to owner confirmation */}
@@ -155,9 +219,11 @@ export const FareBreakdown: React.FC<Props> = ({ fare, bookingType, showEstimate
       <div className="mt-4 pt-3 border-t border-slate-200 flex items-center justify-between">
         <div>
           <span className="text-xs uppercase font-bold tracking-wider text-slate-500 block">
-            {showEstimatedRange ? 'Estimated Total' : 'Total Fare'}
+            {showEstimatedRange ? 'Estimated Cab Fare' : 'Total Cab Fare'}
           </span>
-          <span className="text-[11px] text-slate-400">Toll, Parking & State Tax extra as actuals</span>
+          <span className="text-[11px] font-semibold text-amber-700">
+            + Toll @ actual & parking fee extra (by customer)
+          </span>
         </div>
         <div className="text-right">
           <span className="text-2xl sm:text-3xl font-black text-[#078A32] tracking-tight">

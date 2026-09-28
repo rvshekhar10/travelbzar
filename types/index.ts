@@ -63,8 +63,14 @@ export interface PricingSnapshot {
   extraKmRate: number;
   extraHourRate: number;
   waitingRate: number;
+  waitingFreeMinutes?: number;
   nightCharge: number;
+  nightStart?: string;
+  nightEnd?: string;
   airportDelayCharge: number;
+  airportDelayMaxHours?: number;
+  cleaningMin?: number;
+  cleaningMax?: number;
 }
 
 export interface FareCalculation {
@@ -83,6 +89,18 @@ export interface FareCalculation {
   estimatedMinFare?: number;
   estimatedMaxFare?: number;
   isOwnerReviewRequired?: boolean;
+}
+
+export interface RouteStop {
+  id: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  stopOrder: number;
+  haltDurationMinutes?: number; // e.g. 15, 30, 45, 60 minutes
+  haltReason?: string; // e.g. "Lunch / Sightseeing / Client Meeting / Pickup"
+  placeId?: string;
+  landmark?: string;
 }
 
 export interface Booking {
@@ -108,6 +126,8 @@ export interface Booking {
 
   pickup: LocationCoordinate;
   drop: LocationCoordinate;
+  stops?: RouteStop[];
+  totalHaltMinutes?: number;
 
   airport?: AirportDetails;
 
@@ -149,6 +169,39 @@ export interface VehicleAvailabilitySchedule {
   notes?: string; // e.g. "Stationed at Dhanbad Base"
 }
 
+export type VehiclePermitType =
+  | 'ALL_INDIA'
+  | 'STATE_TOURIST'
+  | 'LOCAL_COMMERCIAL'
+  | 'INTER_STATE';
+
+export interface VehiclePermit {
+  permitNumber: string; // e.g. "JH-PERMIT-2024-981"
+  permitType: VehiclePermitType | string; // e.g. "All India Tourist Permit" or "State Tourist"
+  permittedStates: string[]; // e.g. ["Jharkhand", "West Bengal", "Bihar", "Odisha", "Uttar Pradesh"]
+  issueDate?: string; // YYYY-MM-DD
+  expiryDate?: string; // YYYY-MM-DD
+  isAllIndia?: boolean;
+  notes?: string;
+}
+
+export type InsuranceType =
+  | 'COMPREHENSIVE'
+  | 'COMMERCIAL_THIRD_PARTY'
+  | 'BUMPER_TO_BUMPER';
+
+export interface VehicleInsurance {
+  policyNumber: string; // e.g. "BAJAJ-COMM-9988123"
+  insurerName: string; // e.g. "Bajaj Allianz General Insurance"
+  insuranceType?: InsuranceType | string;
+  startDate?: string; // YYYY-MM-DD
+  expiryDate: string; // YYYY-MM-DD (Critical for 30-day and 10-day alerts)
+  premiumAmount?: number;
+  documentUrl?: string;
+  reminderSent30Days?: boolean;
+  forcedReminderSent10Days?: boolean;
+}
+
 export interface Vehicle {
   id: string;
   registrationNumber: string; // e.g. JH-10-BX-1234
@@ -162,12 +215,26 @@ export interface Vehicle {
   status: VehicleStatus;
   currentDriverId?: string;
   availabilitySchedule?: VehicleAvailabilitySchedule;
+  permit?: VehiclePermit;
+  insurance?: VehicleInsurance;
   notes?: string;
   createdAt: string;
   updatedAt?: string;
 }
 
 export type DriverStatus = 'ACTIVE' | 'INACTIVE' | 'ON_LEAVE';
+
+export type DriverAuthorizationStatus = 'VALID' | 'EXPIRING_SOON' | 'EXPIRED';
+
+export interface DriverAuthorizationRenewal {
+  renewedAt: string; // ISO date
+  renewedBy?: string; // owner
+  validFrom: string; // YYYY-MM-DD
+  validUntil: string; // YYYY-MM-DD
+  durationMonths: number;
+  authorizedVehicleNumbers: string[];
+  notes?: string;
+}
 
 export interface Driver {
   id: string;
@@ -179,6 +246,13 @@ export interface Driver {
   licenseExpiry: string;
   status: DriverStatus;
   assignedVehicleId?: string;
+  // Driver authorization fields
+  authorizationStartDate?: string; // YYYY-MM-DD
+  authorizationExpiryDate?: string; // YYYY-MM-DD
+  authorizationDurationMonths?: number; // e.g. 1, 3, 6, 12 months
+  authorizedVehicleIds?: string[]; // Vehicle IDs driver is authorized to drive
+  authorizedVehicleNumbers?: string[]; // Registration plate numbers e.g. ["JH-10-BX-1234"]
+  authorizationHistory?: DriverAuthorizationRenewal[];
   totalTrips?: number;
   rating?: number;
   currentLocation?: {
@@ -221,8 +295,15 @@ export interface InAppNotification {
     | 'TRIP_COMPLETED'
     | 'PAYMENT_RECEIVED'
     | 'BOOKING_CANCELLED'
-    | 'SYSTEM_ALERT';
+    | 'SYSTEM_ALERT'
+    | 'INSURANCE_EXPIRY_30_DAYS'
+    | 'FORCED_INSURANCE_EXPIRY_10_DAYS'
+    | 'DRIVER_AUTH_EXPIRING'
+    | 'DRIVER_AUTH_EXPIRED';
   bookingId?: string;
+  vehicleId?: string;
+  driverId?: string;
+  isUrgent?: boolean;
   read: boolean;
   createdAt: string;
 }

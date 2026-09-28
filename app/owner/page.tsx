@@ -10,6 +10,7 @@ import { computeAnalytics } from '@/services/analyticsService';
 import { OwnerChauffeurMap } from '@/components/maps/OwnerChauffeurMap';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
 import { PaymentStatusBadge } from '@/components/booking/PaymentStatusBadge';
+import { InsuranceAlertBanner } from '@/components/owner/InsuranceAlertBanner';
 import {
   DollarSign,
   Calendar,
@@ -93,6 +94,9 @@ export default function OwnerDashboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* PERSISTENT INSURANCE EXPIRY ALERT BANNER (1 Month Notice & 10 Day Forced Warning) */}
+      <InsuranceAlertBanner vehicles={vehicles} />
 
       {/* BUSINESS READINESS & FLEET ONBOARDING STATUS CARD */}
       <div className="bg-white rounded-3xl p-5 sm:p-6 border-2 border-slate-200 shadow-xs space-y-4">

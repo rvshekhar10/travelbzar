@@ -1,4 +1,4 @@
-import { LocationCoordinate } from '@/types';
+import { LocationCoordinate, RouteStop } from '@/types';
 import { BUSINESS_CONFIG } from '@/config/business';
 
 // Cache for calculated routes to prevent redundant Google Maps API calls
@@ -108,20 +108,135 @@ export async function calculateRouteDistance(
   return calculated;
 }
 
+export interface RouteLeg {
+  fromAddress: string;
+  toAddress: string;
+  distanceKm: number;
+  durationMinutes: number;
+}
+
+export interface MultiStopRouteResult {
+  distanceKm: number;
+  drivingDurationMinutes: number;
+  totalHaltMinutes: number;
+  totalDurationMinutes: number;
+  legs: RouteLeg[];
+}
+
 /**
- * Generates an external Google Maps navigation deep-link.
+ * Calculates complete route distance, driving time, halt wait time,
+ * and individual leg breakdowns across multiple stops and halts.
  */
-export function getGoogleMapsNavigationUrl(drop: LocationCoordinate, pickup?: LocationCoordinate): string {
+export async function calculateMultiStopRouteDistance(
+  pickup: LocationCoordinate,
+  stops: RouteStop[] | undefined,
+  drop: LocationCoordinate
+): Promise<MultiStopRouteResult> {
+  const validStops = (stops || []).filter(
+    (s) => s.address && s.latitude !== undefined && s.longitude !== undefined
+  );
+
+  const totalHaltMinutes = validStops.reduce(
+    (acc, stop) => acc + (stop.haltDurationMinutes || 0),
+    0
+  );
+
+  // Direct A -> B route
+  if (validStops.length === 0) {
+    const direct = await calculateRouteDistance(pickup, drop);
+    return {
+      distanceKm: direct.distanceKm,
+      drivingDurationMinutes: direct.durationMinutes,
+      totalHaltMinutes: 0,
+      totalDurationMinutes: direct.durationMinutes,
+      legs: [
+        {
+          fromAddress: pickup.address,
+          toAddress: drop.address,
+          distanceKm: direct.distanceKm,
+          durationMinutes: direct.durationMinutes,
+        },
+      ],
+    };
+  }
+
+  // Multi-stop sequential route: Pickup -> Stop 1 -> Stop 2 -> ... -> Drop
+  const routePoints: LocationCoordinate[] = [
+    pickup,
+    ...validStops.map((s) => ({
+      address: s.address,
+      latitude: s.latitude,
+      longitude: s.longitude,
+      placeId: s.placeId,
+      landmark: s.landmark,
+    })),
+    drop,
+  ];
+
+  let cumulativeDistanceKm = 0;
+  let cumulativeDrivingMinutes = 0;
+  const legs: RouteLeg[] = [];
+
+  for (let i = 0; i < routePoints.length - 1; i++) {
+    const fromPoint = routePoints[i];
+    const toPoint = routePoints[i + 1];
+
+    const legResult = await calculateRouteDistance(fromPoint, toPoint);
+    cumulativeDistanceKm += legResult.distanceKm;
+    cumulativeDrivingMinutes += legResult.durationMinutes;
+
+    legs.push({
+      fromAddress: fromPoint.address,
+      toAddress: toPoint.address,
+      distanceKm: legResult.distanceKm,
+      durationMinutes: legResult.durationMinutes,
+    });
+  }
+
+  const roundedDistance = Math.round(cumulativeDistanceKm * 10) / 10;
+  const totalDurationMinutes = cumulativeDrivingMinutes + totalHaltMinutes;
+
+  return {
+    distanceKm: roundedDistance,
+    drivingDurationMinutes: cumulativeDrivingMinutes,
+    totalHaltMinutes,
+    totalDurationMinutes,
+    legs,
+  };
+}
+
+/**
+ * Generates an external Google Maps navigation deep-link with support
+ * for multiple intermediate waypoint stops and halts.
+ */
+export function getGoogleMapsNavigationUrl(
+  drop: LocationCoordinate,
+  pickup?: LocationCoordinate,
+  stops?: RouteStop[]
+): string {
   const dest = encodeURIComponent(drop.address || `${drop.latitude},${drop.longitude}`);
+
   if (pickup) {
     const origin = encodeURIComponent(pickup.address || `${pickup.latitude},${pickup.longitude}`);
+    const validStops = (stops || []).filter(
+      (s) => s.address || (s.latitude !== undefined && s.longitude !== undefined)
+    );
+
+    if (validStops.length > 0) {
+      const waypoints = validStops
+        .map((s) => encodeURIComponent(s.address || `${s.latitude},${s.longitude}`))
+        .join('|');
+      return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&waypoints=${waypoints}&travelmode=driving`;
+    }
+
     return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=driving`;
   }
+
   return `https://www.google.com/maps/search/?api=1&query=${dest}`;
 }
 
 /**
- * Returns popular preset locations in Dhanbad and nearby airports.
+ * Returns popular preset locations in Dhanbad and nearby airport hubs.
  */
 export function getPresetLocations() {
   return [
@@ -157,3 +272,76 @@ export function getPresetLocations() {
     },
   ];
 }
+
+/**
+ * Popular tourist sightseeing, pilgrimage, and highway refreshment halt destinations
+ * in Dhanbad and surrounding Jharkhand circuits.
+ */
+export function getPopularTouristAndHaltSpots() {
+  return [
+    {
+      label: 'Maithon Dam & Boating Club',
+      address: 'Maithon Dam Lake View Point, Damodar Valley, Dhanbad, Jharkhand 828207',
+      category: 'Sightseeing',
+      latitude: 23.8569,
+      longitude: 86.8115,
+      recommendedHaltMinutes: 60,
+      description: 'Scenic dam lake, boating, and fresh river fish snacks.',
+    },
+    {
+      label: 'Topchanchi Wildlife Sanctuary & Lake',
+      address: 'Topchanchi Lake, NH19/Grand Trunk Road, Dhanbad, Jharkhand 828402',
+      category: 'Nature & Refreshment',
+      latitude: 23.9015,
+      longitude: 86.2081,
+      recommendedHaltMinutes: 45,
+      description: 'Picturesque lake surrounded by Parasnath hills with GT Road dhabas.',
+    },
+    {
+      label: 'Shakti Mandir, Joraphatak',
+      address: 'Shakti Mandir, Joraphatak Rd, Dhanbad, Jharkhand 826001',
+      category: 'Pilgrimage',
+      latitude: 23.7932,
+      longitude: 86.4251,
+      recommendedHaltMinutes: 30,
+      description: 'Renowned temple dedicated to Goddess Durga; eternal flame brought from Jwalaji.',
+    },
+    {
+      label: 'Birsa Munda Park, Bhuda',
+      address: 'Birsa Munda Park, Main Road, Bhuda, Dhanbad, Jharkhand 826001',
+      category: 'Family Recreation',
+      latitude: 23.8219,
+      longitude: 86.4429,
+      recommendedHaltMinutes: 45,
+      description: 'Sprawling city park with floral gardens, fountains, and walking tracks.',
+    },
+    {
+      label: 'Bhatinda Falls, Munidih',
+      address: 'Bhatinda Falls, Moonidih, Dhanbad, Jharkhand 828129',
+      category: 'Sightseeing',
+      latitude: 23.7121,
+      longitude: 86.3262,
+      recommendedHaltMinutes: 60,
+      description: 'Cascading natural water falls over massive boulders, 14 km from Dhanbad station.',
+    },
+    {
+      label: 'Panchet Dam Viewpoint',
+      address: 'Panchet Dam Reservoir, Dhanbad-Purulia Border, Jharkhand 828206',
+      category: 'Sightseeing',
+      latitude: 23.6842,
+      longitude: 86.7495,
+      recommendedHaltMinutes: 45,
+      description: 'Majestic DVC dam nestled against the backdrop of Panchet Hill.',
+    },
+    {
+      label: 'Highway King Dhaba, Govindpur NH19',
+      address: 'Highway King Restaurant & Dhaba, NH19 GT Road, Govindpur, Dhanbad 828109',
+      category: 'Food & Refreshment',
+      latitude: 23.8375,
+      longitude: 86.5241,
+      recommendedHaltMinutes: 30,
+      description: 'Popular clean highway stop for tea, tandoori chai, and authentic North Indian meals.',
+    },
+  ];
+}
+
