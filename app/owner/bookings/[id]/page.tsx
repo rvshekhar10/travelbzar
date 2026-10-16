@@ -13,6 +13,7 @@ import {
   updateBookingTripStatus,
   addChargesToBooking,
   checkBookingConflict,
+  adjustTripDetourAndStayCharges,
 } from '@/services/bookingService';
 import { getBookingEvents } from '@/lib/firebase/store';
 import { useDriverLocation } from '@/hooks/useDriverLocation';
@@ -42,6 +43,8 @@ import {
   Printer,
   History,
   Sparkles,
+  Compass,
+  Moon,
 } from 'lucide-react';
 
 interface Props {
@@ -69,6 +72,9 @@ export default function OwnerBookingDetailPage({ params }: Props) {
 
   // Additional charges modal state
   const [showChargesModal, setShowChargesModal] = useState(false);
+  const [detourKm, setDetourKm] = useState<number>(0);
+  const [waitMins, setWaitMins] = useState<number>(0);
+  const [stayNights, setStayNights] = useState<number>(0);
   const [parking, setParking] = useState<number>(0);
   const [toll, setToll] = useState<number>(0);
   const [stateTax, setStateTax] = useState<number>(0);
@@ -82,6 +88,9 @@ export default function OwnerBookingDetailPage({ params }: Props) {
       setSelectedDriverId(booking.driverId || '');
       setSelectedVehicleId(booking.vehicleId || '');
       setConfirmedFare(booking.fare.baseFare || 0);
+      setDetourKm(booking.actualDetourKm || booking.fare.detourKm || 0);
+      setWaitMins(booking.actualWaitMinutes || (booking.fare.waitingCharge ? Math.round(booking.fare.waitingCharge / (pricing?.waitingRatePerMinute || 3)) : 0));
+      setStayNights(booking.driverStayNights || booking.fare.driverStayNights || 0);
       setParking(booking.fare.parkingCharge || 0);
       setToll(booking.fare.tollCharge || 0);
       setStateTax(booking.fare.stateTaxCharge || 0);
@@ -89,7 +98,7 @@ export default function OwnerBookingDetailPage({ params }: Props) {
 
       getBookingEvents(booking.id).then((evts) => setEvents(evts));
     }
-  }, [booking]);
+  }, [booking, pricing]);
 
   // Live conflict detection on selection change
   useEffect(() => {
@@ -167,15 +176,18 @@ export default function OwnerBookingDetailPage({ params }: Props) {
 
   const handleSaveAdditionalCharges = async () => {
     setActionLoading(true);
-    await addChargesToBooking(
+    await adjustTripDetourAndStayCharges(
       booking.id,
       {
+        detourKm: Math.max(0, detourKm - (booking.actualDetourKm || 0)),
+        waitMinutes: Math.max(0, waitMins - (booking.actualWaitMinutes || 0)),
+        driverStayNights: Math.max(0, stayNights - (booking.driverStayNights || 0)),
         parkingCharge: parking,
         tollCharge: toll,
         stateTaxCharge: stateTax,
         cleaningCharge: cleaning,
       },
-      'Owner'
+      { name: user?.name || 'Owner', role: 'owner', id: user?.id || 'owner' }
     );
     setShowChargesModal(false);
     await refresh();
@@ -475,62 +487,139 @@ export default function OwnerBookingDetailPage({ params }: Props) {
       {/* ADDITIONAL CHARGES MODAL */}
       {showChargesModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-fade-in text-xs">
+          <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 animate-fade-in text-xs max-h-[90vh] overflow-y-auto">
             <div className="pb-2 border-b border-slate-100">
               <h3 className="text-base font-extrabold text-[#061B33]">
-                Add Operational & Extra Charges
+                Manage Detours, Halts & Operational Charges
               </h3>
               <p className="text-[11px] text-slate-500">
-                Toll, Parking, State Tax, or Cleaning as per actual journey receipts.
+                Adjust detour excess km, customer wait time, driver stay allowance, and actual travel receipts.
               </p>
             </div>
 
             <div className="space-y-3">
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Parking Charges (₹)</label>
+              {/* Detour Excess KM */}
+              <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-amber-950 flex items-center gap-1.5">
+                    <Compass className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Detour Excess Mileage (KM):</span>
+                  </span>
+                  <span className="text-[11px] text-amber-800 font-semibold">
+                    @ ₹{booking.pricingSnapshot?.extraKmRate ?? pricing?.localExtraKmRate ?? 14} / KM
+                  </span>
+                </div>
                 <input
                   type="number"
                   min={0}
-                  value={parking}
-                  onChange={(e) => setParking(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300"
+                  step={1}
+                  value={detourKm}
+                  onChange={(e) => setDetourKm(Math.max(0, Number(e.target.value)))}
+                  className="w-full px-3 py-2 rounded-xl border border-amber-300 bg-white font-bold"
                 />
               </div>
 
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Toll Plaza Charges (₹)</label>
+              {/* Wait Time & Halt */}
+              <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-amber-950 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Customer Wait Time (Minutes):</span>
+                  </span>
+                  <span className="text-[11px] text-amber-800 font-semibold">
+                    @ ₹{booking.pricingSnapshot?.waitingRate ?? pricing?.waitingRatePerMinute ?? 3} / Min
+                  </span>
+                </div>
                 <input
                   type="number"
                   min={0}
-                  value={toll}
-                  onChange={(e) => setToll(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300"
+                  step={5}
+                  value={waitMins}
+                  onChange={(e) => setWaitMins(Math.max(0, Number(e.target.value)))}
+                  className="w-full px-3 py-2 rounded-xl border border-amber-300 bg-white font-bold"
                 />
               </div>
 
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">State Tax / Interstate (₹)</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={stateTax}
-                  onChange={(e) => setStateTax(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300"
-                />
+              {/* Driver Stay Nights */}
+              <div className="p-3 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-indigo-950 flex items-center gap-1.5">
+                    <Moon className="w-3.5 h-3.5 text-indigo-700" />
+                    <span>Driver Stay / Night Halt (Nights):</span>
+                  </span>
+                  <span className="text-[11px] text-indigo-800 font-semibold">
+                    @ ₹{booking.pricingSnapshot?.driverStayRatePerNight ?? pricing?.driverStayRatePerNight ?? 500} / Night
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  {[0, 1, 2, 3, 4].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setStayNights(n)}
+                      className={`flex-1 py-1.5 rounded-xl border font-bold text-xs transition-all ${
+                        stayNights === n
+                          ? 'border-indigo-600 bg-indigo-600 text-white shadow-xs'
+                          : 'border-indigo-200 bg-white text-indigo-900 hover:bg-indigo-100/50'
+                      }`}
+                    >
+                      {n === 0 ? 'None' : `${n}N`}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">
-                  Cleaning Charge if Car Gets Dirty (₹{booking.pricingSnapshot?.cleaningMin ?? pricing?.cleaningMin ?? 500} – ₹{booking.pricingSnapshot?.cleaningMax ?? pricing?.cleaningMax ?? 1500})
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={booking.pricingSnapshot?.cleaningMax ?? pricing?.cleaningMax ?? 1500}
-                  value={cleaning}
-                  onChange={(e) => setCleaning(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300"
-                />
+              {/* Parking & Toll Actuals */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Parking Fee Receipt (₹)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={parking}
+                    onChange={(e) => setParking(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Toll Plaza Receipt (₹)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={toll}
+                    onChange={(e) => setToll(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold"
+                  />
+                </div>
+              </div>
+
+              {/* State Tax & Cleaning */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Interstate Tax (₹)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={stateTax}
+                    onChange={(e) => setStateTax(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Cleaning Charge (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={booking.pricingSnapshot?.cleaningMax ?? pricing?.cleaningMax ?? 1500}
+                    value={cleaning}
+                    onChange={(e) => setCleaning(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold"
+                  />
+                </div>
               </div>
             </div>
 
@@ -547,9 +636,9 @@ export default function OwnerBookingDetailPage({ params }: Props) {
                 type="button"
                 onClick={handleSaveAdditionalCharges}
                 disabled={actionLoading}
-                className="bg-[#078A32] hover:bg-[#056B27] text-white font-extrabold px-5 py-2.5 rounded-xl shadow-md"
+                className="bg-[#078A32] hover:bg-[#056B27] text-white font-extrabold px-5 py-2.5 rounded-xl shadow-md transition-all active:scale-95"
               >
-                Save Charges
+                Save & Recalculate Fare
               </button>
             </div>
           </div>

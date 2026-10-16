@@ -211,7 +211,7 @@ export default function OwnerSettingsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
           <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
             <span className="text-slate-500 font-semibold block mb-0.5">Master Administrator Email</span>
-            <span className="font-bold text-slate-900">{user?.email || 'rvshekhar10@gmail.com'}</span>
+            <span className="font-bold text-slate-900">{user?.email || 'travelbzar@gmail.com'}</span>
           </div>
 
           <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">

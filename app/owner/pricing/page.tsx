@@ -274,7 +274,7 @@ export default function OwnerPricingManagementPage() {
             3. Specialized Rules & Allowances
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             {/* Flight Delay Rule */}
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
               <div className="font-bold text-slate-900">Airport Flight Delay</div>
@@ -328,6 +328,25 @@ export default function OwnerPricingManagementPage() {
                     className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* Driver Stay / Night Halt Allowance */}
+            <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2">
+              <div className="font-bold text-indigo-950">Driver Stay Allowance</div>
+              <p className="text-[10px] text-indigo-800">
+                Chauffeur lodging & boarding for customer-requested stay
+              </p>
+              <div>
+                <label className="text-[10px] font-bold text-indigo-900 block mb-1">₹ / Night</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={form.driverStayRatePerNight || 500}
+                  onChange={(e) => setForm({ ...form, driverStayRatePerNight: Number(e.target.value) })}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-300 bg-white font-bold"
+                />
               </div>
             </div>
 

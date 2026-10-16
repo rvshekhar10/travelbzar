@@ -31,7 +31,7 @@ export default function ForgotPasswordPage() {
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
           <div className="flex justify-center mb-3">
-            <TravelBzarLogo size="md" variant="dark" showTagline={false} clickable={false} />
+            <TravelBzarLogo size="lg" layout="wide" variant="dark" showTagline={false} clickable={false} />
           </div>
           <h2 className="text-2xl font-black text-[#061B33]">Reset Password</h2>
           <p className="text-xs text-slate-500 mt-1">We will email you a secure reset link</p>

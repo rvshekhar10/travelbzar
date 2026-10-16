@@ -135,20 +135,20 @@ export default function OwnerCustomersPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {users.map((c) => (
             <div
-              key={c.id}
+              key={c.id || Math.random().toString()}
               className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-3 relative"
             >
               <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
                 <span className="text-[10px] font-mono font-bold text-slate-400">
-                  UID: {c.id.slice(0, 10)}...
+                  UID: {(c.id || '').slice(0, 10) || 'CUSTOMER'}...
                 </span>
                 <div className="flex items-center gap-2">
                   <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                    {c.status}
+                    {c.status || 'active'}
                   </span>
                   <button
                     onClick={() => {
-                      if (confirm(`Remove customer account ${c.name} from Firestore?`)) {
+                      if (confirm(`Remove customer account ${c.name || 'this customer'} from Firestore?`)) {
                         removeUser(c.id);
                       }
                     }}

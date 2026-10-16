@@ -9,6 +9,9 @@ export interface FareCalculationInput {
   agreedBaseFare?: number; // Fare confirmed by owner for airport
   flightDelayMinutes?: number;
   waitingMinutes?: number;
+  haltMinutes?: number; // Scheduled halt time at intermediate stops
+  detourKm?: number; // Explicit excess detour distance (e.g. from mid-trip log)
+  driverStayNights?: number; // Driver overnight stay requested by customer
   isAirportPickup?: boolean;
   parkingCharge?: number;
   tollCharge?: number;
@@ -40,6 +43,7 @@ export function isNightTime(timeStr: string, nightStart = '22:00', nightEnd = '0
 
 /**
  * Centralized, pure calculation engine for Travel BZAR.
+ * Dynamically computes excess distance, detours, stop halts, driver stay, and airport allowances.
  * All monetary amounts are rounded integers in INR.
  */
 export function calculateFare(
@@ -55,6 +59,9 @@ export function calculateFare(
     agreedBaseFare,
     flightDelayMinutes = 0,
     waitingMinutes = 0,
+    haltMinutes = 0,
+    detourKm: explicitDetourKm = 0,
+    driverStayNights = 0,
     parkingCharge = 0,
     tollCharge = 0,
     stateTaxCharge = 0,
@@ -64,6 +71,8 @@ export function calculateFare(
 
   let baseFare = 0;
   let distanceCharge = 0;
+  let calculatedDetourKm = 0;
+  let detourCharge = 0;
   let timeCharge = 0;
   let estimatedMinFare: number | undefined;
   let estimatedMaxFare: number | undefined;
@@ -72,10 +81,15 @@ export function calculateFare(
   if (bookingType === 'LOCAL_CITY') {
     baseFare = config.localBaseFare;
 
-    // Extra KM over 80 km
+    // Extra KM over 80 km package
     if (distanceKm > config.localIncludedKm) {
-      const extraKm = Math.max(0, distanceKm - config.localIncludedKm);
-      distanceCharge = Math.round(extraKm * config.localExtraKmRate);
+      calculatedDetourKm = Math.max(0, distanceKm - config.localIncludedKm);
+      distanceCharge = Math.round(calculatedDetourKm * config.localExtraKmRate);
+      detourCharge = distanceCharge;
+    } else if (explicitDetourKm > 0) {
+      calculatedDetourKm = explicitDetourKm;
+      distanceCharge = Math.round(calculatedDetourKm * config.localExtraKmRate);
+      detourCharge = distanceCharge;
     }
 
     // Extra hours over 8 hours (480 minutes)
@@ -101,6 +115,16 @@ export function calculateFare(
 
     // If owner has confirmed an agreed base fare, use it; otherwise use average/min for estimate
     baseFare = agreedBaseFare && agreedBaseFare > 0 ? agreedBaseFare : estimatedMinFare;
+
+    // Detour excess distance: any kilometers exceeding the standard airport route
+    const standardAirportKm = matchedAirport.distanceKmApprox || 150;
+    const excessRouteKm = distanceKm > standardAirportKm ? Math.round((distanceKm - standardAirportKm) * 10) / 10 : 0;
+    calculatedDetourKm = Math.max(explicitDetourKm, excessRouteKm);
+
+    if (calculatedDetourKm > 0) {
+      detourCharge = Math.round(calculatedDetourKm * config.localExtraKmRate);
+      distanceCharge = detourCharge;
+    }
   }
 
   // Airport Flight Delay Rule (Up to 4 hours = ₹500, > 4 hours = OWNER REVIEW REQUIRED)
@@ -116,12 +140,21 @@ export function calculateFare(
     }
   }
 
-  // Waiting Charges (15 min free, ₹3/min after)
+  // Waiting & Intermediate Stop Halt Charges
+  // Free buffer applies once (15 min free), then ₹3/min
   let waitingCharge = 0;
-  // If flight delay rule is applied, airport pickup flight delay does not also trigger standard waiting
-  if (waitingMinutes > config.waitingFreeMinutes) {
-    const chargeableMinutes = waitingMinutes - config.waitingFreeMinutes;
+  const cumulativeWaitMinutes = Math.max(0, waitingMinutes) + Math.max(0, haltMinutes);
+  if (cumulativeWaitMinutes > config.waitingFreeMinutes) {
+    const chargeableMinutes = cumulativeWaitMinutes - config.waitingFreeMinutes;
     waitingCharge = Math.round(chargeableMinutes * config.waitingRatePerMinute);
+  }
+
+  // Driver Stay / Overnight Halt Allowance (Customer Request)
+  // Standard lodging/boarding allowance e.g. ₹500/night
+  let driverStayCharge = 0;
+  const stayRate = config.driverStayRatePerNight || 500;
+  if (driverStayNights > 0) {
+    driverStayCharge = Math.round(driverStayNights * stayRate);
   }
 
   // Night Charge: ₹300 if trip starts between 10 PM and 6 AM
@@ -139,6 +172,7 @@ export function calculateFare(
       distanceCharge +
       timeCharge +
       waitingCharge +
+      driverStayCharge +
       airportDelayCharge +
       nightCharge +
       parkingCharge +
@@ -151,8 +185,12 @@ export function calculateFare(
   return {
     baseFare,
     distanceCharge,
+    detourKm: calculatedDetourKm > 0 ? calculatedDetourKm : undefined,
+    detourCharge: detourCharge > 0 ? detourCharge : undefined,
     timeCharge,
     waitingCharge,
+    driverStayNights: driverStayNights > 0 ? driverStayNights : undefined,
+    driverStayCharge: driverStayCharge > 0 ? driverStayCharge : undefined,
     airportDelayCharge,
     nightCharge,
     parkingCharge: Math.round(parkingCharge),
@@ -184,6 +222,7 @@ export function createPricingSnapshot(config: PricingConfig): PricingSnapshot {
     nightEnd: config.nightEnd,
     airportDelayCharge: config.airportDelayCharge,
     airportDelayMaxHours: config.airportDelayMaxHours,
+    driverStayRatePerNight: config.driverStayRatePerNight || 500,
     cleaningMin: config.cleaningMin,
     cleaningMax: config.cleaningMax,
   };

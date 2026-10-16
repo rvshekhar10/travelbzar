@@ -390,7 +390,7 @@ export default function OwnerDriversPage() {
 
             return (
               <div
-                key={d.id}
+                key={d.id || Math.random().toString()}
                 className={`bg-white rounded-3xl p-6 border shadow-sm space-y-4 relative ${
                   authStatus.isExpired
                     ? 'border-rose-300 ring-2 ring-rose-200'
@@ -401,7 +401,9 @@ export default function OwnerDriversPage() {
               >
                 {/* Header row */}
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <span className="text-xs font-mono font-bold text-slate-400">ID: {d.id.slice(0, 10)}...</span>
+                  <span className="text-xs font-mono font-bold text-slate-400">
+                    ID: {(d.id || '').slice(0, 10) || 'CHAUFFEUR'}...
+                  </span>
                   <div className="flex items-center gap-2">
                     <span
                       className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${
@@ -410,7 +412,7 @@ export default function OwnerDriversPage() {
                           : 'bg-slate-100 text-slate-700 border-slate-300'
                       }`}
                     >
-                      {d.status}
+                      {d.status || 'ACTIVE'}
                     </span>
 
                     <button
@@ -423,7 +425,7 @@ export default function OwnerDriversPage() {
 
                     <button
                       onClick={() => {
-                        if (confirm(`Remove chauffeur ${d.name} from Firestore?`)) {
+                        if (confirm(`Remove chauffeur ${d.name || 'this driver'} from Firestore?`)) {
                           removeDriver(d.id);
                         }
                       }}

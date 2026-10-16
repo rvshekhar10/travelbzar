@@ -110,6 +110,7 @@ function BookCabContent() {
   const [drivingDurationMinutes, setDrivingDurationMinutes] = useState<number>(210);
   const [totalHaltMinutes, setTotalHaltMinutes] = useState<number>(0);
   const [stops, setStops] = useState<RouteStop[]>([]);
+  const [driverStayNights, setDriverStayNights] = useState<number>(0);
   const [routeLegs, setRouteLegs] = useState<RouteLeg[]>([]);
 
   // Update locations when airport or booking type changes
@@ -183,6 +184,8 @@ function BookCabContent() {
       airportCode: selectedAirportCode,
       flightDelayMinutes: bookingType === 'AIRPORT_PICKUP' ? flightDelayMinutes : 0,
       isAirportPickup: bookingType === 'AIRPORT_PICKUP',
+      haltMinutes: totalHaltMinutes,
+      driverStayNights,
     },
     pricing
   );
@@ -264,6 +267,7 @@ function BookCabContent() {
         drop,
         stops: stops.length > 0 ? stops : undefined,
         totalHaltMinutes,
+        driverStayNights: driverStayNights > 0 ? driverStayNights : undefined,
         airport: airportDetails,
         distanceKm,
         estimatedDurationMinutes: durationMinutes,
@@ -797,6 +801,8 @@ function BookCabContent() {
             stops={stops}
             onChange={setStops}
             bookingType={bookingType}
+            driverStayNights={driverStayNights}
+            onDriverStayChange={setDriverStayNights}
           />
 
           {locationError && (

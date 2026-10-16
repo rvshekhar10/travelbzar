@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { Download, X } from 'lucide-react';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -58,8 +59,14 @@ export const PWAInstallPrompt: React.FC = () => {
   return (
     <div className="fixed bottom-16 sm:bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:max-w-sm z-50 bg-[#061B33] text-white p-3.5 rounded-2xl border border-slate-700 shadow-2xl flex items-center justify-between gap-3 animate-fade-in">
       <div className="flex items-center gap-3">
-        <div className="w-9 h-9 rounded-xl bg-[#078A32] text-white flex items-center justify-center shrink-0 font-bold shadow-md">
-          <Download className="w-5 h-5" />
+        <div className="w-10 h-10 rounded-xl bg-white p-1 flex items-center justify-center shrink-0 shadow-sm border border-white/80">
+          <Image
+            src="/logo-icon.png"
+            alt="Travel BZAR"
+            width={32}
+            height={32}
+            className="object-contain"
+          />
         </div>
         <div>
           <div className="text-xs font-bold text-white">Install Travel BZAR</div>

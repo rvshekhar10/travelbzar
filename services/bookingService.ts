@@ -133,6 +133,7 @@ export interface CreateBookingInput {
   drop: LocationCoordinate;
   stops?: RouteStop[];
   totalHaltMinutes?: number;
+  driverStayNights?: number;
   airport?: AirportDetails;
   distanceKm: number;
   estimatedDurationMinutes: number;
@@ -152,6 +153,8 @@ export async function createNewBooking(input: CreateBookingInput): Promise<Booki
       airportCode: input.airport?.code,
       flightDelayMinutes: input.airport?.delayMinutes || 0,
       isAirportPickup: input.bookingType === 'AIRPORT_PICKUP',
+      haltMinutes: input.totalHaltMinutes || 0,
+      driverStayNights: input.driverStayNights || 0,
     },
     config
   );
@@ -183,6 +186,7 @@ export async function createNewBooking(input: CreateBookingInput): Promise<Booki
     drop: input.drop,
     stops: validStops.length > 0 ? validStops : undefined,
     totalHaltMinutes: input.totalHaltMinutes,
+    driverStayNights: input.driverStayNights,
     airport: input.airport,
     distanceKm: Math.round(input.distanceKm * 10) / 10,
     estimatedDurationMinutes: input.estimatedDurationMinutes,
@@ -629,6 +633,109 @@ export async function addChargesToBooking(
   });
 
   return { success: true };
+}
+
+export interface TripAdjustmentInput {
+  detourKm?: number;
+  waitMinutes?: number;
+  driverStayNights?: number;
+  parkingCharge?: number;
+  tollCharge?: number;
+  stateTaxCharge?: number;
+  cleaningCharge?: number;
+  otherCharge?: number;
+  notes?: string;
+}
+
+/**
+ * Dynamically adjusts trip fare when a passenger requests detours, wait time, or driver stay
+ * during trip execution or reconciliation.
+ */
+export async function adjustTripDetourAndStayCharges(
+  bookingId: string,
+  adjustments: TripAdjustmentInput,
+  actor: { name: string; role: 'driver' | 'owner'; id: string }
+): Promise<{ success: boolean; error?: string; updatedBooking?: Booking }> {
+  const booking = await getBookingById(bookingId);
+  if (!booking) return { success: false, error: 'Booking not found' };
+
+  const config = await getPricingConfig();
+
+  const additionalDetourKm = adjustments.detourKm || 0;
+  const additionalWaitMinutes = adjustments.waitMinutes || 0;
+  const additionalStayNights = adjustments.driverStayNights || 0;
+
+  // Compute accumulated values
+  const totalActualDetourKm = (booking.actualDetourKm || 0) + additionalDetourKm;
+  const totalActualWaitMinutes = (booking.actualWaitMinutes || 0) + additionalWaitMinutes;
+  const totalDriverStayNights = (booking.driverStayNights || 0) + additionalStayNights;
+
+  // Re-run fare calculation with updated detour km, wait time, and driver stay nights
+  const newFare = calculateFare(
+    {
+      bookingType: booking.bookingType,
+      distanceKm: (booking.distanceKm || 0) + additionalDetourKm,
+      durationMinutes: (booking.estimatedDurationMinutes || 0) + additionalWaitMinutes,
+      pickupTime: booking.pickupTime,
+      airportCode: booking.airport?.code,
+      agreedBaseFare: booking.fare.baseFare,
+      flightDelayMinutes: booking.airport?.delayMinutes || 0,
+      waitingMinutes: totalActualWaitMinutes,
+      haltMinutes: booking.totalHaltMinutes || 0,
+      detourKm: totalActualDetourKm,
+      driverStayNights: totalDriverStayNights,
+      isAirportPickup: booking.bookingType === 'AIRPORT_PICKUP',
+      parkingCharge: adjustments.parkingCharge !== undefined ? adjustments.parkingCharge : booking.fare.parkingCharge,
+      tollCharge: adjustments.tollCharge !== undefined ? adjustments.tollCharge : booking.fare.tollCharge,
+      stateTaxCharge: adjustments.stateTaxCharge !== undefined ? adjustments.stateTaxCharge : booking.fare.stateTaxCharge,
+      cleaningCharge: adjustments.cleaningCharge !== undefined ? adjustments.cleaningCharge : booking.fare.cleaningCharge,
+      otherCharge: adjustments.otherCharge !== undefined ? adjustments.otherCharge : booking.fare.otherCharge,
+    },
+    config
+  );
+
+  const updatedBooking: Booking = {
+    ...booking,
+    fare: newFare,
+    actualDetourKm: totalActualDetourKm > 0 ? totalActualDetourKm : undefined,
+    actualWaitMinutes: totalActualWaitMinutes > 0 ? totalActualWaitMinutes : undefined,
+    driverStayNights: totalDriverStayNights > 0 ? totalDriverStayNights : undefined,
+    driverNotes: adjustments.notes
+      ? booking.driverNotes
+        ? `${booking.driverNotes} | ${adjustments.notes}`
+        : adjustments.notes
+      : booking.driverNotes,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await saveBooking(updatedBooking);
+
+  // Notify customer about dynamic fare adjustment
+  const detourText = additionalDetourKm ? ` (+${additionalDetourKm} km detour)` : '';
+  const waitText = additionalWaitMinutes ? ` (+${additionalWaitMinutes} mins wait)` : '';
+  const stayText = additionalStayNights ? ` (+${additionalStayNights} night driver stay)` : '';
+
+  await addNotification({
+    userId: booking.customerId,
+    title: 'Trip Fare Updated (Detour / Waiting / Stay)',
+    body: `Trip #${booking.bookingNumber} fare dynamically updated to ₹${newFare.totalFare.toLocaleString('en-IN')}${detourText}${waitText}${stayText}.`,
+    type: 'SYSTEM_ALERT',
+    bookingId: booking.id,
+  });
+
+  await addBookingEvent({
+    bookingId: booking.id,
+    action: 'Trip Fare Adjusted Dynamically',
+    performedBy: actor.name,
+    role: actor.role,
+    metadata: {
+      adjustments,
+      previousFare: booking.fare.totalFare,
+      newTotal: newFare.totalFare,
+    },
+  });
+
+  return { success: true, updatedBooking };
 }
 
 /**

@@ -48,7 +48,7 @@ export default function DriverLoginPage() {
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center relative z-10 space-y-3">
         <div className="flex justify-center mb-1">
-          <TravelBzarLogo size="md" variant="light" showTagline={false} />
+          <TravelBzarLogo size="lg" layout="wide" variant="light" showTagline={false} />
         </div>
 
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-[#42B900] border border-emerald-500/40 text-xs font-black uppercase tracking-widest">

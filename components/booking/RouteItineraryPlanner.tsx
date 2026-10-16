@@ -19,6 +19,7 @@ import {
   Camera,
   Briefcase,
   ShoppingBag,
+  Moon,
 } from 'lucide-react';
 
 interface RouteItineraryPlannerProps {
@@ -26,6 +27,8 @@ interface RouteItineraryPlannerProps {
   onChange: (stops: RouteStop[]) => void;
   bookingType?: string;
   className?: string;
+  driverStayNights?: number;
+  onDriverStayChange?: (nights: number) => void;
 }
 
 const COMMON_HALT_DURATIONS = [
@@ -53,8 +56,10 @@ export const RouteItineraryPlanner: React.FC<RouteItineraryPlannerProps> = ({
   onChange,
   bookingType,
   className = '',
+  driverStayNights = 0,
+  onDriverStayChange,
 }) => {
-  const [isOpen, setIsOpen] = useState<boolean>(stops.length > 0);
+  const [isOpen, setIsOpen] = useState<boolean>(stops.length > 0 || driverStayNights > 0);
   const [showPresetsModal, setShowPresetsModal] = useState<number | null>(null);
 
   const popularAttractions = getPopularTouristAndHaltSpots();
@@ -400,14 +405,67 @@ export const RouteItineraryPlanner: React.FC<RouteItineraryPlannerProps> = ({
             </div>
           )}
 
+          {/* Customer Requested Driver Stay / Overnight Halt Provision */}
+          <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Moon className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-black text-indigo-950 block">
+                    Driver Stay / Overnight Halt (Customer Request)
+                  </span>
+                  <span className="text-[10px] text-indigo-700 font-medium">
+                    Vehicle and chauffeur stay overnight at outstation destination
+                  </span>
+                </div>
+              </div>
+
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={(driverStayNights || 0) > 0}
+                  onChange={(e) => onDriverStayChange?.(e.target.checked ? 1 : 0)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+              </label>
+            </div>
+
+            {(driverStayNights || 0) > 0 && (
+              <div className="pt-2 border-t border-indigo-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <span className="font-bold text-indigo-950 text-[11px]">
+                  Driver Night Allowance (₹500 / night for food & stay):
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => onDriverStayChange?.(n)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all ${
+                        driverStayNights === n
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-white text-indigo-900 border border-indigo-200 hover:bg-indigo-100/50'
+                      }`}
+                    >
+                      {n} {n === 1 ? 'Night' : 'Nights'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Operational Policy Note */}
           <div className="p-3 rounded-2xl bg-white/80 border border-amber-200/80 text-[11px] text-slate-600 space-y-1">
             <div className="font-bold text-slate-800 flex items-center gap-1.5">
               <Info className="w-3.5 h-3.5 text-amber-600" />
-              <span>Chauffeur Wait Time & Itinerary Coverage</span>
+              <span>Chauffeur Wait Time, Detours & Itinerary Coverage</span>
             </div>
             <p className="leading-relaxed">
-              For <strong>Local City Packages</strong>, all halts and waiting times are accommodated within the 8-hour / 80-km package. For <strong>Airport Transfers</strong>, planned halts allow you to enjoy tourist spots or meal breaks along highway corridors smoothly.
+              For <strong>Local City Packages</strong>, all halts and waiting times are accommodated within the 8-hour / 80-km package. For <strong>Airport Transfers</strong>, planned detours and halt stops are dynamically calculated so you enjoy complete peace of mind with guaranteed fixed pricing.
             </p>
           </div>
         </div>

@@ -10,6 +10,7 @@ import {
   updateBookingTripStatus,
   recordBookingPayment,
   returnVehicleToGarage,
+  adjustTripDetourAndStayCharges,
 } from '@/services/bookingService';
 import {
   startDriverLiveBroadcaster,
@@ -37,6 +38,9 @@ import {
   ExternalLink,
   Car,
   Warehouse,
+  Compass,
+  Moon,
+  Plus,
 } from 'lucide-react';
 
 interface Props {
@@ -54,6 +58,14 @@ export default function DriverTripConsolePage({ params }: Props) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Detour & Stay Adjustment Modal state
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [extraDetourKm, setExtraDetourKm] = useState<number>(0);
+  const [extraWaitMins, setExtraWaitMins] = useState<number>(0);
+  const [extraStayNights, setExtraStayNights] = useState<number>(0);
+  const [adjustNotes, setAdjustNotes] = useState('');
+  const [adjusting, setAdjusting] = useState(false);
 
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -168,6 +180,27 @@ export default function DriverTripConsolePage({ params }: Props) {
     setShowPaymentModal(false);
     await refresh();
     setActionLoading(false);
+  };
+
+  const handleSaveAdjustments = async () => {
+    setAdjusting(true);
+    await adjustTripDetourAndStayCharges(
+      booking.id,
+      {
+        detourKm: extraDetourKm > 0 ? Number(extraDetourKm) : undefined,
+        waitMinutes: extraWaitMins > 0 ? Number(extraWaitMins) : undefined,
+        driverStayNights: extraStayNights > 0 ? Number(extraStayNights) : undefined,
+        notes: adjustNotes || undefined,
+      },
+      actor
+    );
+    setExtraDetourKm(0);
+    setExtraWaitMins(0);
+    setExtraStayNights(0);
+    setAdjustNotes('');
+    setShowAdjustModal(false);
+    await refresh();
+    setAdjusting(false);
   };
 
   const navUrl = getGoogleMapsNavigationUrl(
@@ -352,16 +385,56 @@ export default function DriverTripConsolePage({ params }: Props) {
             </button>
           )}
 
-          {/* 4. Trip in Progress -> Click END TRIP */}
+          {/* 4. Trip in Progress -> Detour / Wait Logging & Complete Trip */}
           {booking.status === 'TRIP_STARTED' && (
-            <button
-              onClick={handleOpenCompleteModal}
-              disabled={actionLoading}
-              className="w-full bg-[#F0441D] hover:bg-[#D43612] active:scale-95 text-white font-black py-4 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 text-sm sm:text-base"
-            >
-              <CheckCircle2 className="w-5 h-5" />
-              <span>END TRIP & COLLECT FARE (₹{booking.fare.totalFare.toLocaleString('en-IN')})</span>
-            </button>
+            <div className="space-y-3">
+              {(booking.actualDetourKm || booking.actualWaitMinutes || booking.driverStayNights) && (
+                <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Compass className="w-4 h-4 text-amber-600" />
+                    <span className="font-bold text-amber-900">Recorded Adjustments:</span>
+                    {booking.actualDetourKm && (
+                      <span className="bg-amber-100 text-amber-950 font-bold px-2 py-0.5 rounded-md text-[11px]">
+                        +{booking.actualDetourKm} km detour
+                      </span>
+                    )}
+                    {booking.actualWaitMinutes && (
+                      <span className="bg-amber-100 text-amber-950 font-bold px-2 py-0.5 rounded-md text-[11px]">
+                        +{booking.actualWaitMinutes} mins wait
+                      </span>
+                    )}
+                    {booking.driverStayNights && (
+                      <span className="bg-indigo-100 text-indigo-950 font-bold px-2 py-0.5 rounded-md text-[11px]">
+                        +{booking.driverStayNights} night stay
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-amber-800 font-bold">Fare Updated ✓</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAdjustModal(true)}
+                  disabled={actionLoading}
+                  className="w-full bg-[#061B33] hover:bg-[#0B223D] active:scale-95 text-white font-extrabold py-3.5 px-4 rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 text-xs sm:text-sm"
+                >
+                  <Compass className="w-4 h-4 text-amber-400" />
+                  <span>LOG DETOUR / WAIT / STAY</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenCompleteModal}
+                  disabled={actionLoading}
+                  className="w-full bg-[#F0441D] hover:bg-[#D43612] active:scale-95 text-white font-black py-3.5 px-4 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 text-xs sm:text-sm"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>END TRIP & COLLECT (₹{booking.fare.totalFare.toLocaleString('en-IN')})</span>
+                </button>
+              </div>
+            </div>
           )}
 
           {/* 5. Trip Completed -> Return to Garage */}
@@ -507,6 +580,180 @@ export default function DriverTripConsolePage({ params }: Props) {
                 className="flex-1 py-3 rounded-xl bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-black text-xs sm:text-sm shadow-md transition-all"
               >
                 {actionLoading ? 'Recording...' : 'Finalize & End Trip'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* LOG DETOUR / WAIT TIME / DRIVER STAY MODAL */}
+      {showAdjustModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-fade-in max-h-[90vh] overflow-y-auto">
+            <div className="text-center pb-2 border-b border-slate-100">
+              <span className="text-[10px] uppercase font-bold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                Customer Mid-Trip Request
+              </span>
+              <h3 className="text-lg font-black text-[#061B33] mt-1">
+                Log Detour, Wait Time or Stay
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                Tariff will dynamically recalculate and notify passenger transparently.
+              </p>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              {/* Detour KM */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 flex items-center justify-between">
+                  <span>Additional Detour Distance (KM):</span>
+                  <span className="text-[10px] text-amber-700 font-semibold">@ ₹14 / KM</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={extraDetourKm || ''}
+                    placeholder="e.g. 15"
+                    onChange={(e) => setExtraDetourKm(Math.max(0, Number(e.target.value)))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                  <div className="flex gap-1 shrink-0">
+                    {[5, 10, 20].map((km) => (
+                      <button
+                        key={km}
+                        type="button"
+                        onClick={() => setExtraDetourKm((prev) => prev + km)}
+                        className="px-2 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[10px]"
+                      >
+                        +{km} km
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Waiting Minutes */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 flex items-center justify-between">
+                  <span>Customer Wait Time (Minutes):</span>
+                  <span className="text-[10px] text-amber-700 font-semibold">@ ₹3 / Min</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    step={5}
+                    value={extraWaitMins || ''}
+                    placeholder="e.g. 30"
+                    onChange={(e) => setExtraWaitMins(Math.max(0, Number(e.target.value)))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                  <div className="flex gap-1 shrink-0">
+                    {[15, 30, 60].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setExtraWaitMins((prev) => prev + m)}
+                        className="px-2 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[10px]"
+                      >
+                        +{m}m
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Driver Stay Nights */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 flex items-center justify-between">
+                  <span>Driver Stay / Overnight Halt (Nights):</span>
+                  <span className="text-[10px] text-indigo-700 font-semibold">@ ₹500 / Night</span>
+                </label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[0, 1, 2, 3].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setExtraStayNights(n)}
+                      className={`py-2 rounded-xl border text-center font-bold text-xs transition-all ${
+                        extraStayNights === n
+                          ? 'border-indigo-600 bg-indigo-50 text-indigo-900 shadow-xs'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {n === 0 ? 'None' : `${n} Night${n > 1 ? 's' : ''}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Passenger Reason Note */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">
+                  Customer Request Note / Reason:
+                </label>
+                <input
+                  type="text"
+                  value={adjustNotes}
+                  onChange={(e) => setAdjustNotes(e.target.value)}
+                  placeholder="e.g. Passenger detour to Ramgarh Market & overnight stay..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden"
+                />
+              </div>
+
+              {/* Live Preview Box */}
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1 text-slate-600">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span>Current Trip Fare:</span>
+                  <span className="font-bold text-slate-800">
+                    ₹{booking.fare.totalFare.toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-emerald-700 font-semibold">
+                  <span>Dynamic Adjustments Addition:</span>
+                  <span>
+                    +₹
+                    {(
+                      (extraDetourKm || 0) * 14 +
+                      (extraWaitMins || 0) * 3 +
+                      (extraStayNights || 0) * 500
+                    ).toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div className="pt-1.5 border-t border-slate-200 flex items-center justify-between font-black text-sm text-[#061B33]">
+                  <span>New Total Fare:</span>
+                  <span className="text-[#078A32]">
+                    ₹
+                    {(
+                      booking.fare.totalFare +
+                      (extraDetourKm || 0) * 14 +
+                      (extraWaitMins || 0) * 3 +
+                      (extraStayNights || 0) * 500
+                    ).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAdjustModal(false)}
+                className="w-1/3 py-3 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveAdjustments}
+                disabled={adjusting}
+                className="flex-1 py-3 rounded-xl bg-[#061B33] hover:bg-[#0B223D] active:scale-95 text-white font-black text-xs shadow-md transition-all flex items-center justify-center gap-1.5"
+              >
+                <Compass className="w-4 h-4 text-amber-400" />
+                <span>{adjusting ? 'Recalculating...' : 'Save & Update Tariff'}</span>
               </button>
             </div>
           </div>

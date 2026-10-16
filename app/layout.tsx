@@ -6,9 +6,9 @@ import { MobileBottomNav } from '@/components/common/MobileBottomNav';
 import { PWAInstallPrompt } from '@/components/common/PWAInstallPrompt';
 
 export const metadata: Metadata = {
-  title: 'Travel BZAR | Premium Cab Service in Dhanbad',
+  title: 'Travel BZAR | Hotels, Flights & Visa, Sustainable EV Cabs',
   description:
-    'Premium cab service in Dhanbad with safe, reliable and comfortable local and airport transportation to Ranchi, Deoghar, and Durgapur airports.',
+    'Curated Hotel Bookings, Fast-Track Flight & Visa Services, and Sustainable Executive EV Cab Mobility. Connect directly with our concierge on WhatsApp.',
   applicationName: 'Travel BZAR',
   manifest: '/manifest.json',
   icons: {

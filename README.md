@@ -274,13 +274,13 @@ Authentication is powered directly by **Firebase Authentication** and role-gover
 
 | Persona | Provisioned By | Role | Access |
 | :--- | :--- | :--- | :--- |
-| **Owner / Admin** | Direct Firebase Auth Setup (`rvshekhar10@gmail.com`) | `owner` | `/owner` (Full dashboard, 1-cab fleet, driver/customer accounts provisioning, pricing, revenue) |
+| **Owner / Admin** | Direct Firebase Auth Setup (`travelbzar@gmail.com` / `rvshekhar10@gmail.com`) | `owner` | `/owner` (Full dashboard, 1-cab fleet, driver/customer accounts provisioning, pricing, revenue) |
 | **Chauffeur / Driver** | Provisioned exclusively by Owner in `/owner/drivers` | `driver` | `/driver` (Trip execution console, garage departures, live GPS sharing, payment collection) |
 | **Customer / Rider** | Provisioned by Owner in `/owner/customers` | `customer` | `/customer` (Booking wizard, live tracking, receipts) |
 
 ### Owner Master Credentials:
-- **Email**: `rvshekhar10@gmail.com`
-- **Password**: `purpul#1`
+- **Email**: `travelbzar@gmail.com`
+- **Password**: `Travelbzar@321`
 - **Access Route**: `/owner/login`
 
 > [!NOTE]
@@ -347,7 +347,7 @@ export const DEFAULT_PRICING_CONFIG = {
 ## 19. How to Test End-to-End Workflow
 
 ### Step 1: Owner Setup (Vehicle & Chauffeur)
-1. Navigate to `/owner/login` and log in with `rvshekhar10@gmail.com` / `purpul#1`.
+1. Navigate to `/owner/login` and log in with `travelbzar@gmail.com` / `Travelbzar@321`.
 2. Go to **Fleet Management** (`/owner/vehicles`):
    - Add your single vehicle (e.g., `Toyota Innova Crysta`, registration `JH-10-BX-1001`).
    - Configure its **Availability Schedule** (24/7 or daily hours, days of week).

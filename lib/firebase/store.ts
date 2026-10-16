@@ -22,6 +22,7 @@ import {
   Vehicle,
   AppUser,
   UserRole,
+  DriverStatus,
 } from '@/types';
 import { DEFAULT_PRICING_CONFIG } from '@/config/business';
 
@@ -146,7 +147,10 @@ export async function getVehicles(): Promise<Vehicle[]> {
     try {
       const q = query(collection(db, 'vehicles'));
       const snap = await getDocs(q);
-      return snap.docs.map((d) => d.data() as Vehicle);
+      return snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      }) as Vehicle);
     } catch (err) {
       console.warn('Firestore getVehicles error, falling back to local cache:', err);
     }
@@ -230,7 +234,23 @@ export async function getDrivers(): Promise<Driver[]> {
     try {
       const q = query(collection(db, 'drivers'));
       const snap = await getDocs(q);
-      return snap.docs.map((d) => d.data() as Driver);
+      return snap.docs
+        .map((d) => {
+          const data = d.data();
+          return {
+            name: data.name || 'Chauffeur',
+            phone: data.phone || '',
+            email: data.email || '',
+            licenseNumber: data.licenseNumber || '',
+            licenseExpiry: data.licenseExpiry || '',
+            status: (data.status as DriverStatus) || 'ACTIVE',
+            totalTrips: data.totalTrips || 0,
+            rating: data.rating || 5,
+            ...data,
+            id: d.id, // Explicitly enforce Firestore doc ID
+          } as Driver;
+        })
+        .filter((d) => Boolean(d.id && (d.name !== 'Chauffeur' || d.phone || d.email || d.licenseNumber)));
     } catch (err) {
       console.warn('Firestore getDrivers error, falling back to local cache:', err);
     }
@@ -323,7 +343,10 @@ export async function getUsers(role?: UserRole): Promise<AppUser[]> {
         q = query(collection(db, 'users'), where('role', '==', role));
       }
       const snap = await getDocs(q);
-      return snap.docs.map((d) => d.data() as AppUser);
+      return snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      }) as AppUser);
     } catch (err) {
       console.error('Firestore getUsers error:', err);
     }
@@ -377,7 +400,10 @@ export async function getBookings(filters?: {
         q = query(collection(db, 'bookings'), where('driverId', '==', filters.driverId));
       }
       const snap = await getDocs(q);
-      return snap.docs.map((d) => d.data() as Booking);
+      return snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      }) as Booking);
     } catch (err) {
       console.warn('Firestore getBookings error, falling back to local cache:', err);
     }
@@ -447,21 +473,25 @@ export async function updateDriverLocation(location: DriverLocation): Promise<vo
       // 1. Save to driverLocations for continuous owner tracking
       if (location.driverId) {
         await setDoc(doc(db, 'driverLocations', location.driverId), cleanForFirestore(payload), { merge: true });
-        await setDoc(
-          doc(db, 'drivers', location.driverId),
-          {
-            currentLocation: {
-              latitude: location.latitude,
-              longitude: location.longitude,
-              accuracy: location.accuracy,
-              heading: location.heading,
-              speed: location.speed,
-              updatedAt: payload.updatedAt,
-              isSharing: location.isSharing,
-            },
-          },
-          { merge: true }
-        );
+
+        // Update driver doc only if driver already exists in drivers collection
+        const driverDocRef = doc(db, 'drivers', location.driverId);
+        const driverSnap = await getDoc(driverDocRef);
+        if (driverSnap.exists()) {
+          const sanitizedLocation = cleanForFirestore({
+            latitude: location.latitude ?? 0,
+            longitude: location.longitude ?? 0,
+            accuracy: location.accuracy ?? 0,
+            heading: location.heading ?? 0,
+            speed: location.speed ?? 0,
+            updatedAt: payload.updatedAt,
+            isSharing: location.isSharing ?? true,
+          });
+
+          await updateDoc(driverDocRef, {
+            currentLocation: sanitizedLocation,
+          });
+        }
       }
 
       // 2. If part of an active booking trip, also save to activeTrips
@@ -753,7 +783,10 @@ export async function getBookingEvents(bookingId: string): Promise<BookingEvent[
       const q = query(collection(db, `bookings/${bookingId}/events`), orderBy('createdAt', 'asc'));
       const snap = await getDocs(q);
       if (!snap.empty) {
-        return snap.docs.map((d) => d.data() as BookingEvent);
+        return snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }) as BookingEvent);
       }
     } catch {
       // fallback

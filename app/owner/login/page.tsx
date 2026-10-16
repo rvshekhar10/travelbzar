@@ -41,8 +41,8 @@ export default function OwnerLoginPage() {
   };
 
   const handleFillOwnerCredentials = () => {
-    setEmail('rvshekhar10@gmail.com');
-    setPassword('purpul#1');
+    setEmail('travelbzar@gmail.com');
+    setPassword('Travelbzar@321');
   };
 
   return (
@@ -52,7 +52,7 @@ export default function OwnerLoginPage() {
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center relative z-10 space-y-4">
         <div className="flex justify-center">
-          <TravelBzarLogo size="lg" variant="light" showTagline={false} />
+          <TravelBzarLogo size="lg" layout="wide" variant="light" showTagline={false} />
         </div>
 
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/20 text-amber-400 border border-amber-400/40 text-xs font-black uppercase tracking-widest">
@@ -89,7 +89,7 @@ export default function OwnerLoginPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="rvshekhar10@gmail.com"
+                  placeholder="travelbzar@gmail.com"
                   className="w-full bg-[#0B223D] border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-hidden focus:ring-2 focus:ring-amber-400"
                 />
               </div>
@@ -140,7 +140,7 @@ export default function OwnerLoginPage() {
               className="w-full flex items-center justify-center gap-2 bg-[#0B223D] hover:bg-[#122F54] border border-slate-700 text-amber-400 font-bold text-xs py-2.5 rounded-xl transition-all active:scale-95 cursor-pointer"
             >
               <KeyRound className="w-3.5 h-3.5" />
-              <span>Fill Owner Credentials (rvshekhar10@gmail.com)</span>
+              <span>Fill Owner Credentials (travelbzar@gmail.com)</span>
             </button>
           </div>
         </div>

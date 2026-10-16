@@ -134,6 +134,30 @@ export default function DigitalReceiptPage({ params }: Props) {
             </div>
           )}
 
+          {(booking.fare.detourCharge || (booking.bookingType !== 'LOCAL_CITY' && booking.fare.distanceCharge > 0)) && (
+            <div className="flex justify-between text-slate-600">
+              <span>
+                Route Detour Excess Distance{' '}
+                {booking.actualDetourKm || booking.fare.detourKm
+                  ? `(${booking.actualDetourKm || booking.fare.detourKm} km)`
+                  : ''}
+              </span>
+              <span className="font-bold">
+                +₹{(booking.fare.detourCharge || booking.fare.distanceCharge).toLocaleString('en-IN')}
+              </span>
+            </div>
+          )}
+
+          {booking.fare.driverStayCharge && booking.fare.driverStayCharge > 0 && (
+            <div className="flex justify-between text-slate-600">
+              <span>
+                Driver Stay Allowance ({booking.driverStayNights || booking.fare.driverStayNights || 1}{' '}
+                Night(s))
+              </span>
+              <span className="font-bold">+₹{booking.fare.driverStayCharge.toLocaleString('en-IN')}</span>
+            </div>
+          )}
+
           {booking.fare.airportDelayCharge > 0 && (
             <div className="flex justify-between text-slate-600">
               <span>Airport Flight Delay Waiting (Up to 4 hrs)</span>

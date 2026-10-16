@@ -55,7 +55,7 @@ export default function RegisterPage() {
         {/* Brand header */}
         <div className="text-center">
           <div className="flex justify-center mb-3">
-            <TravelBzarLogo size="md" variant="dark" showTagline={false} clickable={false} />
+            <TravelBzarLogo size="lg" layout="wide" variant="dark" showTagline={false} clickable={false} />
           </div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-[#078A32] border border-emerald-200 text-xs font-bold mb-2">
             <Sparkles className="w-3.5 h-3.5" />

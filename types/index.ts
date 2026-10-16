@@ -69,6 +69,7 @@ export interface PricingSnapshot {
   nightEnd?: string;
   airportDelayCharge: number;
   airportDelayMaxHours?: number;
+  driverStayRatePerNight?: number;
   cleaningMin?: number;
   cleaningMax?: number;
 }
@@ -76,8 +77,12 @@ export interface PricingSnapshot {
 export interface FareCalculation {
   baseFare: number;
   distanceCharge: number;
+  detourKm?: number;
+  detourCharge?: number;
   timeCharge: number;
   waitingCharge: number;
+  driverStayNights?: number;
+  driverStayCharge?: number;
   airportDelayCharge: number;
   nightCharge: number;
   parkingCharge: number;
@@ -128,6 +133,9 @@ export interface Booking {
   drop: LocationCoordinate;
   stops?: RouteStop[];
   totalHaltMinutes?: number;
+  driverStayNights?: number;
+  actualDetourKm?: number;
+  actualWaitMinutes?: number;
 
   airport?: AirportDetails;
 
@@ -347,6 +355,8 @@ export interface PricingConfig {
 
   cleaningMin: number; // ₹500
   cleaningMax: number; // ₹1500
+
+  driverStayRatePerNight: number; // ₹500/night
 
   bookingBufferMinutes: number; // 30 minutes
   updatedAt?: string;

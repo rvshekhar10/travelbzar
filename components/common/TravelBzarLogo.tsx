@@ -1,98 +1,153 @@
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
-interface LogoProps {
-  size?: 'sm' | 'md' | 'lg';
-  variant?: 'light' | 'dark';
+export type LogoLayout = 'ultrawide' | 'wide' | 'icon' | 'vertical' | 'full';
+
+export interface LogoProps {
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  variant?: 'light' | 'dark'; // 'light' means parent container is dark (e.g. #061B33), 'dark' means parent is light
+  layout?: LogoLayout;
   showTagline?: boolean;
   clickable?: boolean;
   href?: string;
+  className?: string;
 }
+
+const LOGO_FILES: Record<LogoLayout, { src: string; aspect: number; defaultW: number; defaultH: number }> = {
+  ultrawide: {
+    src: '/logo-ultrawide.png',
+    aspect: 4.25, // 425 x 100
+    defaultW: 425,
+    defaultH: 100,
+  },
+  wide: {
+    src: '/logo-wide.png',
+    aspect: 2.41, // 313 x 130
+    defaultW: 313,
+    defaultH: 130,
+  },
+  icon: {
+    src: '/logo-icon.png',
+    aspect: 1.03, // 233 x 225
+    defaultW: 233,
+    defaultH: 225,
+  },
+  vertical: {
+    src: '/logo-vertical.png',
+    aspect: 0.63, // 186 x 294
+    defaultW: 186,
+    defaultH: 294,
+  },
+  full: {
+    src: '/logo-full.png',
+    aspect: 1.67, // 305 x 183
+    defaultW: 305,
+    defaultH: 183,
+  },
+};
+
+const DIMENSIONS: Record<LogoLayout, Record<'sm' | 'md' | 'lg' | 'xl', { width: number; height: number }>> = {
+  ultrawide: {
+    sm: { width: 110, height: 26 },
+    md: { width: 145, height: 34 },
+    lg: { width: 196, height: 46 },
+    xl: { width: 246, height: 58 },
+  },
+  wide: {
+    sm: { width: 72, height: 30 },
+    md: { width: 96, height: 40 },
+    lg: { width: 135, height: 56 },
+    xl: { width: 173, height: 72 },
+  },
+  icon: {
+    sm: { width: 28, height: 27 },
+    md: { width: 38, height: 37 },
+    lg: { width: 56, height: 54 },
+    xl: { width: 74, height: 72 },
+  },
+  vertical: {
+    sm: { width: 30, height: 48 },
+    md: { width: 40, height: 64 },
+    lg: { width: 60, height: 96 },
+    xl: { width: 76, height: 120 },
+  },
+  full: {
+    sm: { width: 50, height: 30 },
+    md: { width: 70, height: 42 },
+    lg: { width: 95, height: 57 },
+    xl: { width: 120, height: 72 },
+  },
+};
 
 export const TravelBzarLogo: React.FC<LogoProps> = ({
   size = 'md',
   variant = 'light',
-  showTagline = true,
+  layout = 'ultrawide',
+  showTagline = false,
   clickable = true,
   href = '/',
+  className = '',
 }) => {
-  const isLight = variant === 'light';
+  const isLight = variant === 'light'; // Parent is dark background
+  const config = LOGO_FILES[layout] || LOGO_FILES.ultrawide;
+  const dims = DIMENSIONS[layout]?.[size] || DIMENSIONS.ultrawide[size];
 
-  const textSizes = {
-    sm: 'text-lg',
-    md: 'text-2xl',
-    lg: 'text-4xl',
-  };
-
-  const taglineSizes = {
-    sm: 'text-[9px] tracking-wider',
-    md: 'text-xs tracking-widest',
-    lg: 'text-sm tracking-[0.2em]',
-  };
+  // Brand guideline rule: "Logo is to be placed on white surface only."
+  // When placed on dark backgrounds (isLight=true), wrap in a dedicated white badge.
+  // When placed on already white surfaces (isLight=false), render directly and cleanly.
+  const surfaceClasses = isLight
+    ? 'bg-white rounded-xl px-2.5 py-1 sm:px-3 sm:py-1.5 shadow-sm border border-white/90 inline-flex items-center justify-center transition-all'
+    : 'inline-flex items-center justify-center transition-all';
 
   const content = (
-    <div className="flex items-center gap-2.5 select-none">
-      {/* Visual Brand Mark */}
-      <div className="relative flex items-center justify-center">
-        <div
-          className={`relative rounded-xl overflow-hidden shadow-sm flex items-center justify-center font-bold ${
-            size === 'sm' ? 'w-9 h-9' : size === 'md' ? 'w-11 h-11' : 'w-16 h-16'
-          } ${isLight ? 'bg-[#061B33] text-white border border-slate-700/50' : 'bg-white text-[#061B33] border border-slate-200'}`}
-        >
-          {/* Stylized Red Airplane Angle */}
-          <svg
-            className={`absolute top-0.5 right-0.5 ${size === 'sm' ? 'w-4 h-4' : size === 'md' ? 'w-5 h-5' : 'w-8 h-8'} text-[#F0441D]`}
-            viewBox="0 0 24 24"
-            fill="currentColor"
-          >
-            <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
-          </svg>
-
-          {/* TB monogram */}
-          <span className={`${size === 'sm' ? 'text-xs' : size === 'md' ? 'text-sm' : 'text-xl'} tracking-tighter text-[#42B900]`}>
-            TB
-          </span>
-
-          {/* Green swoosh arc at bottom */}
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-[#078A32] via-[#42B900] to-[#078A32]" />
-        </div>
+    <div className={`inline-flex items-center gap-3 select-none ${className}`}>
+      {/* Strict White Surface Container */}
+      <div className={surfaceClasses}>
+        <Image
+          src={config.src}
+          alt="Travel BZAR"
+          width={dims.width}
+          height={dims.height}
+          priority
+          className="object-contain h-auto max-w-full"
+          style={{ width: dims.width, height: 'auto' }}
+        />
       </div>
 
-      {/* Brand Text */}
-      <div className="flex flex-col justify-center">
-        <div className="flex items-center leading-none">
+      {/* Optional luxury tagline */}
+      {showTagline && (
+        <div
+          className={`flex flex-col justify-center border-l pl-3 ${
+            isLight ? 'border-slate-700/80 text-slate-300' : 'border-slate-300 text-slate-600'
+          }`}
+        >
           <span
-            className={`font-black ${textSizes[size]} tracking-tight ${
-              isLight ? 'text-white' : 'text-[#061B33]'
+            className={`font-black uppercase tracking-wider ${
+              size === 'sm' ? 'text-[9px]' : size === 'md' ? 'text-[10px]' : 'text-xs'
+            } ${isLight ? 'text-white' : 'text-[#061B33]'}`}
+          >
+            Private Chauffeur Service
+          </span>
+          <span
+            className={`font-bold tracking-widest uppercase text-[#078A32] ${
+              size === 'sm' ? 'text-[8px]' : size === 'md' ? 'text-[9px]' : 'text-[10px]'
             }`}
           >
-            TRAVEL
-          </span>
-          <span className={`font-black ${textSizes[size]} tracking-tight ml-1.5 text-[#078A32]`}>
-            BZAR
+            Dhanbad • Airport Corridors
           </span>
         </div>
-
-        {showTagline && (
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="w-2.5 h-[1.5px] bg-[#078A32]/60 inline-block" />
-            <span
-              className={`font-semibold uppercase ${taglineSizes[size]} ${
-                isLight ? 'text-slate-300' : 'text-slate-600'
-              }`}
-            >
-              PRIVATE CHAUFFEUR SERVICE
-            </span>
-            <span className="w-2.5 h-[1.5px] bg-[#078A32]/60 inline-block" />
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 
   if (clickable) {
     return (
-      <Link href={href} className="inline-block transition-opacity hover:opacity-95">
+      <Link
+        href={href}
+        className="inline-block transition-transform hover:scale-[1.02] active:scale-[0.98]"
+        title="Travel BZAR - Private Chauffeur Service"
+      >
         {content}
       </Link>
     );

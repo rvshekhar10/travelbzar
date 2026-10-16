@@ -69,12 +69,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             // Fallback for owner if doc was missing
-            if (fbUser.email?.toLowerCase() === 'rvshekhar10@gmail.com') {
+            const isOwnerEmail = (email?: string | null) => {
+              const e = (email || '').toLowerCase().trim();
+              return e === 'travelbzar@gmail.com' || e === 'rvshekhar10@gmail.com';
+            };
+
+            if (isOwnerEmail(fbUser.email)) {
+              const ownerName =
+                fbUser.email?.toLowerCase() === 'travelbzar@gmail.com'
+                  ? 'Travel BZAR (Owner)'
+                  : 'Chandra Shekhar (Owner)';
               const ownerData: AppUser = {
                 id: fbUser.uid,
                 role: 'owner',
-                name: 'Chandra Shekhar (Owner)',
-                email: 'rvshekhar10@gmail.com',
+                name: ownerName,
+                email: fbUser.email?.toLowerCase() || 'travelbzar@gmail.com',
                 phone: '+91 9007210697',
                 status: 'active',
                 createdAt: new Date().toISOString(),
@@ -133,14 +142,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // If owner logs in, ensure owner role and document exists in Firestore
-      if (cleanEmail === 'rvshekhar10@gmail.com') {
+      const isOwnerEmail = (e: string) =>
+        e === 'travelbzar@gmail.com' || e === 'rvshekhar10@gmail.com';
+
+      if (isOwnerEmail(cleanEmail)) {
         if (!appUserData || appUserData.role !== 'owner') {
+          const ownerName =
+            cleanEmail === 'travelbzar@gmail.com'
+              ? 'Travel BZAR (Owner)'
+              : 'Chandra Shekhar (Owner)';
           appUserData = {
             id: cred.user.uid,
             role: 'owner',
-            name: 'Chandra Shekhar (Owner)',
-            email: 'rvshekhar10@gmail.com',
-            phone: '+91 9007210697',
+            name: appUserData?.name || ownerName,
+            email: cleanEmail,
+            phone: appUserData?.phone || '+91 9007210697',
             status: 'active',
             createdAt: appUserData?.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString(),

@@ -147,5 +147,7 @@ export const DEFAULT_PRICING_CONFIG: PricingConfig = {
   cleaningMin: 500,
   cleaningMax: 1500,
 
+  driverStayRatePerNight: 500,
+
   bookingBufferMinutes: 30,
 };

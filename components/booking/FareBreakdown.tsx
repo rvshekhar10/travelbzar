@@ -1,6 +1,6 @@
 import React from 'react';
 import { FareCalculation, BookingType, PricingSnapshot } from '@/types';
-import { AlertCircle, Info, Sparkles } from 'lucide-react';
+import { AlertCircle, Info, Sparkles, Compass, Moon } from 'lucide-react';
 import { usePricing } from '@/hooks/usePricing';
 
 interface Props {
@@ -25,9 +25,13 @@ export const FareBreakdown: React.FC<Props> = ({
   const extraHourRate = pricingSnapshot?.extraHourRate ?? pricing?.localExtraHourRate ?? 150;
   const waitRate = pricingSnapshot?.waitingRate ?? pricing?.waitingRatePerMinute ?? 3;
   const freeMins = pricing?.waitingFreeMinutes ?? 15;
+  const stayRate = pricingSnapshot?.driverStayRatePerNight ?? pricing?.driverStayRatePerNight ?? 500;
   const nightStart = pricing?.nightStart ?? '10 PM';
   const nightEnd = pricing?.nightEnd ?? '6 AM';
   const delayMaxHours = pricing?.airportDelayMaxHours ?? 4;
+
+  const detourAmount = fare.detourCharge || (isAirport && fare.distanceCharge > 0 ? fare.distanceCharge : 0);
+  const detourDistance = fare.detourKm || (detourAmount > 0 ? Math.round((detourAmount / extraKmRate) * 10) / 10 : 0);
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
@@ -49,8 +53,21 @@ export const FareBreakdown: React.FC<Props> = ({
           </span>
         </div>
 
+        {/* Airport Route Detours */}
+        {isAirport && detourAmount > 0 && (
+          <div className="flex items-center justify-between text-amber-950 bg-amber-50/60 px-2.5 py-1.5 rounded-lg border border-amber-200 text-xs">
+            <span className="flex items-center gap-1 font-medium">
+              <Compass className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span>Route Detour ({detourDistance} km excess @ ₹{extraKmRate}/km)</span>
+            </span>
+            <span className="font-bold text-amber-900">
+              +₹{detourAmount.toLocaleString('en-IN')}
+            </span>
+          </div>
+        )}
+
         {/* Local City Extra KM */}
-        {fare.distanceCharge > 0 && (
+        {!isAirport && fare.distanceCharge > 0 && (
           <div className="flex items-center justify-between text-slate-600 pl-2 border-l-2 border-slate-200">
             <span>Extra Distance (above {includedKm} km @ ₹{extraKmRate}/km)</span>
             <span className="font-semibold text-slate-900">
@@ -65,6 +82,22 @@ export const FareBreakdown: React.FC<Props> = ({
             <span>Extra Duration (above {includedHours} hrs @ ₹{extraHourRate}/hr)</span>
             <span className="font-semibold text-slate-900">
               +₹{fare.timeCharge.toLocaleString('en-IN')}
+            </span>
+          </div>
+        )}
+
+        {/* Driver Stay / Overnight Halt Allowance (Customer Request) */}
+        {fare.driverStayCharge && fare.driverStayCharge > 0 && (
+          <div className="flex items-center justify-between text-indigo-950 bg-indigo-50/70 px-2.5 py-1.5 rounded-lg border border-indigo-200 text-xs font-medium">
+            <span className="flex items-center gap-1.5">
+              <Moon className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <span>
+                Driver Stay Allowance ({fare.driverStayNights || 1} Night
+                {(fare.driverStayNights || 1) > 1 ? 's' : ''} @ ₹{stayRate}/night)
+              </span>
+            </span>
+            <span className="font-bold text-indigo-900">
+              +₹{fare.driverStayCharge.toLocaleString('en-IN')}
             </span>
           </div>
         )}
@@ -88,10 +121,10 @@ export const FareBreakdown: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Waiting Charges */}
+        {/* Waiting & Halt Charges */}
         {fare.waitingCharge > 0 && (
           <div className="flex items-center justify-between text-slate-600 pl-2 border-l-2 border-slate-200">
-            <span>Waiting Charge (after {freeMins} free mins @ ₹{waitRate}/min)</span>
+            <span>Waiting & Halt Time (after {freeMins} free mins @ ₹{waitRate}/min)</span>
             <span className="font-semibold text-slate-900">
               +₹{fare.waitingCharge.toLocaleString('en-IN')}
             </span>
