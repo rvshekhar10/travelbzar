@@ -47,9 +47,9 @@ export const AppHeader: React.FC = () => {
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200/80 text-slate-800 shadow-xs transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-18 flex items-center justify-between">
-        {/* Brand Logo - Pure white canvas with NO extra text */}
+        {/* Brand Logo - Pure white canvas with NO extra text using logo-full */}
         <div className="flex items-center">
-          <TravelBzarLogo size="md" variant="dark" layout="ultrawide" showTagline={false} />
+          <TravelBzarLogo size="md" variant="dark" layout="full" showTagline={false} />
         </div>
 
         {/* Short & Clean Navigation Links */}

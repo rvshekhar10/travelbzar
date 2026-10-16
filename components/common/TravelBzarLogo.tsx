@@ -73,10 +73,10 @@ const DIMENSIONS: Record<LogoLayout, Record<'sm' | 'md' | 'lg' | 'xl', { width: 
     xl: { width: 76, height: 120 },
   },
   full: {
-    sm: { width: 50, height: 30 },
-    md: { width: 70, height: 42 },
-    lg: { width: 95, height: 57 },
-    xl: { width: 120, height: 72 },
+    sm: { width: 65, height: 39 },
+    md: { width: 90, height: 54 },
+    lg: { width: 115, height: 69 },
+    xl: { width: 140, height: 84 },
   },
 };
 
