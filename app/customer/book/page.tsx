@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/authContext';
 import { usePricing } from '@/hooks/usePricing';
@@ -8,7 +8,6 @@ import { useVehicles } from '@/hooks/useVehicles';
 import { BookingType, LocationCoordinate, AirportDetails, Booking, RouteStop } from '@/types';
 import { BUSINESS_CONFIG } from '@/config/business';
 import {
-  calculateRouteDistance,
   calculateMultiStopRouteDistance,
   getPresetLocations,
   RouteLeg,
@@ -17,29 +16,24 @@ import { calculateFare } from '@/services/fareService';
 import { createNewBooking } from '@/services/bookingService';
 import { getCurrentDeviceLocation } from '@/services/locationService';
 import { MapView } from '@/components/maps/MapView';
-import { LocationPickerMap } from '@/components/maps/LocationPickerMap';
-import { FareBreakdown } from '@/components/booking/FareBreakdown';
-import { RouteItineraryPlanner } from '@/components/booking/RouteItineraryPlanner';
-import { RouteItineraryView } from '@/components/booking/RouteItineraryView';
+import { AddressAutocompleteInput } from '@/components/common/AddressAutocompleteInput';
+import { MinimalLocationPinModal } from '@/components/maps/MinimalLocationPinModal';
 import {
   Car,
   Plane,
   Clock,
   MapPin,
   Calendar,
-  ShieldCheck,
   CheckCircle2,
   ArrowRight,
   ArrowLeft,
   Navigation,
-  Info,
   AlertCircle,
-  Sparkles,
-  User,
-  KeyRound,
-  Mail,
-  Loader2,
-  Compass,
+  Plus,
+  Trash2,
+  ShieldCheck,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 function BookCabContent() {
@@ -47,18 +41,19 @@ function BookCabContent() {
   const searchParams = useSearchParams();
   const { user, login, registerCustomer } = useAuth();
   const { pricing } = usePricing();
-  const { vehicles, loading: loadingVehicles } = useVehicles();
+  const { vehicles } = useVehicles();
   const primaryVehicle = vehicles[0];
-  const [activePointerTarget, setActivePointerTarget] = useState<'pickup' | 'drop'>('pickup');
 
-  // Booking Stepper state: 1: TYPE, 2: LOCATIONS, 3: DATE & TIME, 4: FARE & ROUTE, 5: CONFIRM
-  const [step, setStep] = useState<number>(1);
+  // Simplified 3-Step Flow:
+  // Step 1: Ride Details (Pickup, Drop, Service Type, When)
+  // Step 2: Route & Fare Preview (Map, Distance, Fare Card, Optional Halts)
+  // Step 3: Passenger & Confirmation (Phone, Name, One-Tap Confirm)
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [submitting, setSubmitting] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   const [locationDetecting, setLocationDetecting] = useState(false);
-  const [locationError, setLocationError] = useState<string | null>(null);
 
-  // Authentication requirement state for guests
+  // Auth requirement for guest riders
   const [authTab, setAuthTab] = useState<'signup' | 'signin'>('signup');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -77,12 +72,23 @@ function BookCabContent() {
   const [expectedArrival, setExpectedArrival] = useState('');
   const [flightDelayMinutes, setFlightDelayMinutes] = useState<number>(0);
 
-  // Default Locations
+  // Locations
   const defaultDhanbad: LocationCoordinate = {
     address: 'Dhanbad Junction Railway Station, Station Rd, Dhanbad, Jharkhand 826001',
     latitude: 23.7915,
     longitude: 86.4295,
   };
+
+  const presetSuggestions = useMemo(
+    () =>
+      getPresetLocations().map((p) => ({
+        label: p.label,
+        address: p.address,
+        latitude: p.latitude,
+        longitude: p.longitude,
+      })),
+    []
+  );
 
   const [pickup, setPickup] = useState<LocationCoordinate>(defaultDhanbad);
   const [drop, setDrop] = useState<LocationCoordinate>({
@@ -100,20 +106,22 @@ function BookCabContent() {
   const [pickupTime, setPickupTime] = useState<string>('08:30');
   const [customerNotes, setCustomerNotes] = useState<string>('');
 
-  // Customer Contact Info
+  // Contact Info
   const [customerName, setCustomerName] = useState<string>(user?.name || '');
-  const [customerPhone, setCustomerPhone] = useState<string>(user?.phone || '+91 9431100000');
+  const [customerPhone, setCustomerPhone] = useState<string>(user?.phone || '');
 
-  // Calculated Route & Fare
+  // Stops & Calculations
+  const [stops, setStops] = useState<RouteStop[]>([]);
+  const [showStopsSection, setShowStopsSection] = useState(false);
+  const [activePinPointer, setActivePinPointer] = useState<string | null>(null); // 'pickup' | 'drop' | 'stop-0' | null
   const [distanceKm, setDistanceKm] = useState<number>(150);
   const [durationMinutes, setDurationMinutes] = useState<number>(210);
   const [drivingDurationMinutes, setDrivingDurationMinutes] = useState<number>(210);
   const [totalHaltMinutes, setTotalHaltMinutes] = useState<number>(0);
-  const [stops, setStops] = useState<RouteStop[]>([]);
   const [driverStayNights, setDriverStayNights] = useState<number>(0);
   const [routeLegs, setRouteLegs] = useState<RouteLeg[]>([]);
 
-  // Update locations when airport or booking type changes
+  // Update default locations on booking type change
   useEffect(() => {
     if (bookingType === 'AIRPORT_DROP') {
       const airport =
@@ -135,7 +143,6 @@ function BookCabContent() {
       });
       setDrop(defaultDhanbad);
     } else {
-      // LOCAL_CITY
       setPickup(defaultDhanbad);
       setDrop({
         address: 'Local Dhanbad Sightseeing / Corporate Circuit, Dhanbad, Jharkhand',
@@ -145,7 +152,7 @@ function BookCabContent() {
     }
   }, [bookingType, selectedAirportCode]);
 
-  // Recalculate route whenever pickup/drop/stops change
+  // Recalculate route whenever locations or stops change
   useEffect(() => {
     let isCurrent = true;
     const calculate = async () => {
@@ -159,7 +166,7 @@ function BookCabContent() {
           setRouteLegs(route.legs);
         }
       } catch (e) {
-        console.info('Route calc notice:', e);
+        console.info('Route calc info:', e);
       }
     };
     calculate();
@@ -174,7 +181,7 @@ function BookCabContent() {
     JSON.stringify(stops.map((s) => [s.address, s.latitude, s.longitude, s.haltDurationMinutes])),
   ]);
 
-  // Compute live estimated fare
+  // Fare
   const currentFare = calculateFare(
     {
       bookingType,
@@ -190,43 +197,61 @@ function BookCabContent() {
     pricing
   );
 
-  // Geolocation handler
+  // Quick GPS
   const handleUseCurrentLocation = async (target: 'pickup' | 'drop') => {
     setLocationDetecting(true);
-    setLocationError(null);
     try {
       const loc = await getCurrentDeviceLocation();
-      loc.address = `GPS Location: ${loc.latitude.toFixed(4)}, ${loc.longitude.toFixed(4)} (Dhanbad)`;
+      loc.address = `GPS: Near ${loc.latitude.toFixed(3)}, ${loc.longitude.toFixed(3)} (Dhanbad)`;
       if (target === 'pickup') setPickup(loc);
       else setDrop(loc);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Location permission denied.';
-      setLocationError(msg);
+    } catch {
+      alert('Could not access current location. Please type your location.');
     } finally {
       setLocationDetecting(false);
     }
   };
 
-  // Submit booking
+  // Add Stop
+  const handleAddStop = () => {
+    const newStop: RouteStop = {
+      id: `stop-${Date.now()}`,
+      address: '',
+      latitude: 23.8143,
+      longitude: 86.4412,
+      stopOrder: stops.length + 1,
+      haltDurationMinutes: 30,
+      haltReason: 'Refreshment',
+    };
+    setStops([...stops, newStop]);
+    setShowStopsSection(true);
+  };
+
+  const handleRemoveStop = (idx: number) => {
+    const updated = stops.filter((_, i) => i !== idx).map((s, i) => ({ ...s, stopOrder: i + 1 }));
+    setStops(updated);
+    if (updated.length === 0) setShowStopsSection(false);
+  };
+
+  // Submit Booking
   const handleConfirmBooking = async () => {
     setAuthError(null);
-
-    // If user is not authenticated, support registration or login
     let activeUser = user;
+
     if (!activeUser) {
-      if (!customerName || !customerPhone) {
-        setAuthError('Please enter passenger full name and contact phone number.');
+      if (!customerName.trim() || !customerPhone.trim()) {
+        setAuthError('Please enter your name and phone number.');
         return;
       }
-      if (!authEmail || !authPassword) {
-        setAuthError('Please enter your email address and password.');
+      if (!authEmail.trim() || !authPassword.trim()) {
+        setAuthError('Please enter your email and password to secure your ride.');
         return;
       }
       setSubmitting(true);
       if (authTab === 'signup') {
         const regRes = await registerCustomer(customerName, authEmail, authPassword, customerPhone);
         if (!regRes.success || !regRes.user) {
-          setAuthError(regRes.error || 'Failed to create account. Please verify details.');
+          setAuthError(regRes.error || 'Failed to create account. Please check details.');
           setSubmitting(false);
           return;
         }
@@ -234,7 +259,7 @@ function BookCabContent() {
       } else {
         const loginRes = await login(authEmail, authPassword);
         if (!loginRes.success || !loginRes.user) {
-          setAuthError(loginRes.error || 'Invalid credentials. Please verify your email and password.');
+          setAuthError(loginRes.error || 'Invalid credentials. Please verify email and password.');
           setSubmitting(false);
           return;
         }
@@ -247,12 +272,17 @@ function BookCabContent() {
       const airportDetails: AirportDetails | undefined =
         bookingType !== 'LOCAL_CITY'
           ? {
-              name: selectedAirportCode === 'IXR' ? 'Ranchi Airport' : selectedAirportCode === 'DGH' ? 'Deoghar Airport' : 'Durgapur Airport',
-              code: selectedAirportCode,
-              flightNumber: flightNumber || undefined,
-              expectedArrival: expectedArrival || undefined,
-              delayMinutes: flightDelayMinutes,
-            }
+            name:
+              selectedAirportCode === 'IXR'
+                ? 'Ranchi Airport'
+                : selectedAirportCode === 'DGH'
+                  ? 'Deoghar Airport'
+                  : 'Durgapur Airport',
+            code: selectedAirportCode,
+            flightNumber: flightNumber || undefined,
+            expectedArrival: expectedArrival || undefined,
+            delayMinutes: flightDelayMinutes,
+          }
           : undefined;
 
       const newBooking = await createNewBooking({
@@ -274,7 +304,6 @@ function BookCabContent() {
         customerNotes,
       });
 
-      // Transition straight to live tracking / finding driver screen
       router.push(`/customer/bookings/${newBooking.id}`);
     } catch (err) {
       console.error('Booking failed:', err);
@@ -282,674 +311,414 @@ function BookCabContent() {
     }
   };
 
-  // Step 6: Success Confirmation Screen
+  // ── Success Screen ──
   if (confirmedBooking) {
     return (
-      <div className="py-10 sm:py-16 px-4 max-w-xl mx-auto">
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border-2 border-emerald-500/40 shadow-2xl text-center space-y-5 animate-fade-in">
-          <div className="w-16 h-16 rounded-full bg-emerald-100 text-[#078A32] flex items-center justify-center mx-auto shadow-md">
-            <CheckCircle2 className="w-10 h-10" />
-          </div>
-
-          <div>
-            <span className="text-xs uppercase font-extrabold tracking-widest text-[#078A32] bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-              BOOKING REQUESTED
-            </span>
-            <h1 className="text-2xl sm:text-3xl font-black text-[#061B33] mt-3 font-mono">
-              {confirmedBooking.bookingNumber}
-            </h1>
-            <p className="text-xs text-slate-500 mt-1">
-              Thank you for choosing Travel BZAR. Our dispatch desk will confirm your cab shortly.
-            </p>
-          </div>
-
-          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 text-left text-xs space-y-2.5">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-              <span className="text-slate-500 font-medium">Service</span>
-              <span className="font-extrabold text-[#061B33]">
-                {confirmedBooking.bookingType.replace('_', ' ')}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-              <span className="text-slate-500 font-medium">Scheduled Date & Time</span>
-              <span className="font-bold text-slate-900">
-                {confirmedBooking.bookingDate} at {confirmedBooking.pickupTime} IST
-              </span>
-            </div>
-
-            <div className="space-y-1.5 py-1">
-              <div className="flex items-start gap-2">
-                <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-[9px] shrink-0 mt-0.5">
-                  A
-                </span>
-                <span className="text-slate-700 truncate">{confirmedBooking.pickup.address}</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="w-4 h-4 rounded-full bg-rose-100 text-rose-800 flex items-center justify-center font-bold text-[9px] shrink-0 mt-0.5">
-                  B
-                </span>
-                <span className="text-slate-700 truncate">{confirmedBooking.drop.address}</span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-              <span className="text-slate-500 font-medium">
-                {confirmedBooking.fare.estimatedMinFare ? 'Estimated Fare' : 'Booking Fare'}
-              </span>
-              <span className="text-base font-black text-[#078A32]">
-                {confirmedBooking.fare.estimatedMinFare
-                  ? `₹${confirmedBooking.fare.estimatedMinFare.toLocaleString('en-IN')} – ₹${confirmedBooking.fare.estimatedMaxFare?.toLocaleString('en-IN')}`
-                  : `₹${confirmedBooking.fare.totalFare.toLocaleString('en-IN')}`}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-            <button
-              onClick={() => router.push(`/customer/bookings/${confirmedBooking.id}`)}
-              className="w-full sm:w-auto bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-extrabold text-xs sm:text-sm px-6 py-3.5 rounded-xl shadow-md transition-all"
-            >
-              View Booking Status →
-            </button>
-            <button
-              onClick={() => router.push('/customer')}
-              className="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs sm:text-sm px-5 py-3.5 rounded-xl transition-all"
-            >
-              Back to Dashboard
-            </button>
-          </div>
+      <div className="py-12 px-4 max-w-lg mx-auto text-center space-y-6">
+        <div className="w-16 h-16 rounded-full bg-emerald-100 text-[#078A32] flex items-center justify-center mx-auto shadow-sm">
+          <CheckCircle2 className="w-10 h-10" />
         </div>
+        <h1 className="text-2xl font-black text-slate-900">Ride Requested!</h1>
+        <p className="text-sm text-slate-600">Booking Ref: {confirmedBooking.bookingNumber}</p>
+        <button
+          onClick={() => router.push(`/customer/bookings/${confirmedBooking.id}`)}
+          className="w-full bg-[#078A32] text-white font-extrabold py-4 rounded-2xl shadow-lg"
+        >
+          Track Cab Live
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="py-6 sm:py-10 px-4 sm:px-6 max-w-4xl mx-auto space-y-6">
-      {/* Header and Stepper Indicator */}
-      <div className="space-y-4">
-        <div className="text-center sm:text-left">
-          <span className="text-xs font-bold uppercase tracking-wider text-[#078A32]">
-            Online Booking System
-          </span>
-          <h1 className="text-2xl sm:text-3xl font-black text-[#061B33] mt-1">
-            Reserve Your Premium Cab
-          </h1>
+    <div className="py-4 sm:py-8 px-3 sm:px-6 max-w-2xl mx-auto space-y-4">
+      {/* 3-Step Simple Progress Header */}
+      <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900">Book a Cab</h1>
+          <p className="text-xs text-slate-500 font-medium">
+            {step === 1 && 'Step 1 of 3: Trip details'}
+            {step === 2 && 'Step 2 of 3: Fare & Route preview'}
+            {step === 3 && 'Step 3 of 3: Passenger details'}
+          </p>
         </div>
 
-        {/* 5-Step Visual Stepper */}
-        <div className="flex items-center justify-between max-w-2xl bg-white p-3 rounded-2xl border border-slate-200 shadow-xs text-xs">
-          {[
-            { num: 1, label: 'Type' },
-            { num: 2, label: 'Location' },
-            { num: 3, label: 'Schedule' },
-            { num: 4, label: 'Route & Fare' },
-            { num: 5, label: 'Confirm' },
-          ].map((s) => (
-            <button
-              key={s.num}
-              onClick={() => s.num < step && setStep(s.num)}
-              disabled={s.num > step}
-              className={`flex items-center gap-1.5 font-bold transition-colors ${
-                step === s.num
-                  ? 'text-[#078A32]'
-                  : s.num < step
-                  ? 'text-slate-800 cursor-pointer'
-                  : 'text-slate-400 cursor-not-allowed'
-              }`}
-            >
-              <span
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black ${
-                  step === s.num
-                    ? 'bg-[#078A32] text-white shadow-xs'
-                    : s.num < step
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-slate-100 text-slate-400'
+        {/* Minimal Steps indicator */}
+        <div className="flex items-center gap-1.5">
+          {[1, 2, 3].map((s) => (
+            <div
+              key={s}
+              onClick={() => s < step && setStep(s as 1 | 2 | 3)}
+              className={`h-2 rounded-full transition-all ${step === s
+                  ? 'w-8 bg-[#078A32]'
+                  : s < step
+                    ? 'w-4 bg-emerald-200 cursor-pointer'
+                    : 'w-4 bg-slate-200'
                 }`}
-              >
-                {s.num < step ? '✓' : s.num}
-              </span>
-              <span className="hidden sm:inline">{s.label}</span>
-            </button>
+            />
           ))}
         </div>
       </div>
 
-      {/* STEP 1: CHOOSE BOOKING TYPE */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* STEP 1: RIDE DETAILS (Simple Uber-like inputs)                  */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
       {step === 1 && (
-        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 animate-fade-in">
+        <div className="space-y-4 animate-fade-in">
+          {/* Service Selector Tabs */}
           <div>
-            <h2 className="text-lg font-black text-[#061B33]">Step 1: Choose Your Journey Type</h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Select between our popular airport transfers or full-day Dhanbad local package.
-            </p>
-          </div>
-
-          {/* Primary Fleet Vehicle & Availability Schedule Banner */}
-          {!loadingVehicles && !primaryVehicle ? (
-            <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 text-amber-900 text-xs space-y-2">
-              <div className="font-black text-amber-950 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>Fleet Setup in Progress</span>
-              </div>
-              <p className="text-amber-800 leading-relaxed text-[11px]">
-                The dedicated fleet cab is currently being configured or maintained by Travel BZAR management in Firestore. Bookings are temporarily paused until the fleet cab is activated.
-              </p>
+            <div className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+              Select Trip Type
             </div>
-          ) : primaryVehicle ? (
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
-              <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-[#061B33] text-white flex items-center justify-center font-bold shadow-md shrink-0">
-                  <Car className="w-6 h-6 text-[#42B900]" />
-                </div>
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-[#078A32] block">
-                    Dedicated Fleet Vehicle
-                  </span>
-                  <h4 className="text-sm sm:text-base font-black text-slate-900">
-                    {primaryVehicle.make} {primaryVehicle.model} {primaryVehicle.variant ? `(${primaryVehicle.variant})` : ''}
-                  </h4>
-                  <div className="text-slate-500 font-mono text-[11px] mt-0.5">
-                    {primaryVehicle.registrationNumber} • {primaryVehicle.color} • {primaryVehicle.vehicleType}
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white p-3 rounded-xl border border-slate-200 text-left sm:text-right shrink-0">
-                <span className="text-[10px] text-slate-400 font-bold uppercase block">
-                  Operating Schedule
-                </span>
-                <span className="font-black text-slate-800 text-xs block">
-                  {primaryVehicle.availabilitySchedule?.is24x7
-                    ? '24/7 Round the Clock'
-                    : `${primaryVehicle.availabilitySchedule?.dailyStartTime || '06:00'} — ${primaryVehicle.availabilitySchedule?.dailyEndTime || '23:00'} IST`}
-                </span>
-                <span className="text-[10px] text-slate-500">
-                  {primaryVehicle.availabilitySchedule?.is24x7
-                    ? 'Available Daily'
-                    : primaryVehicle.availabilitySchedule?.availableDays?.join(', ')}
-                </span>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* Airport Drop */}
-            <div
-              onClick={() => setBookingType('AIRPORT_DROP')}
-              className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
-                bookingType === 'AIRPORT_DROP'
-                  ? 'border-[#F0441D] bg-orange-50/50 shadow-md ring-2 ring-orange-200'
-                  : 'border-slate-200 hover:border-slate-300 bg-white'
-              }`}
-            >
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-orange-100 text-[#F0441D] flex items-center justify-center mb-3">
-                  <Plane className="w-5 h-5 -rotate-45" />
-                </div>
-                <h3 className="text-sm font-bold text-slate-900">Airport Drop</h3>
-                <p className="text-xs text-slate-500 mt-1">Dhanbad → Ranchi, Deoghar, or Durgapur</p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-200/60 text-xs font-black text-[#F0441D]">
-                From ₹{Math.min(
-                  pricing?.airports?.durgapur?.minimumFare || 2500,
-                  pricing?.airports?.deoghar?.minimumFare || 3000,
-                  pricing?.airports?.ranchi?.minimumFare || 3500
-                ).toLocaleString('en-IN')}
-              </div>
-            </div>
-
-            {/* Airport Pickup */}
-            <div
-              onClick={() => setBookingType('AIRPORT_PICKUP')}
-              className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
-                bookingType === 'AIRPORT_PICKUP'
-                  ? 'border-[#F0441D] bg-orange-50/50 shadow-md ring-2 ring-orange-200'
-                  : 'border-slate-200 hover:border-slate-300 bg-white'
-              }`}
-            >
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-orange-100 text-[#F0441D] flex items-center justify-center mb-3">
-                  <Plane className="w-5 h-5 rotate-45" />
-                </div>
-                <h3 className="text-sm font-bold text-slate-900">Airport Pickup</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Flight arrival tracking & 4hr delay cover
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-200/60 text-xs font-black text-[#F0441D]">
-                Flight Delay Protected
-              </div>
-            </div>
-
-            {/* Local City */}
-            <div
-              onClick={() => setBookingType('LOCAL_CITY')}
-              className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
-                bookingType === 'LOCAL_CITY'
-                  ? 'border-[#078A32] bg-emerald-50/50 shadow-md ring-2 ring-emerald-200'
-                  : 'border-slate-200 hover:border-slate-300 bg-white'
-              }`}
-            >
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-[#078A32] flex items-center justify-center mb-3">
-                  <Clock className="w-5 h-5" />
-                </div>
-                <h3 className="text-sm font-bold text-slate-900">Local City Package</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  {pricing?.localIncludedHours || 8} Hours / {pricing?.localIncludedKm || 80} KM within Dhanbad district
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-200/60 text-xs font-black text-[#078A32]">
-                Fixed ₹{(pricing?.localBaseFare || 2400).toLocaleString('en-IN')} Base
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-4 border-t border-slate-100">
-            {primaryVehicle ? (
+            <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-200/80 rounded-2xl border border-slate-300">
               <button
-                onClick={() => setStep(2)}
-                className="flex items-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-bold text-xs sm:text-sm px-6 py-3 rounded-xl shadow-md transition-all cursor-pointer"
+                type="button"
+                onClick={() => setBookingType('AIRPORT_DROP')}
+                className={`py-3.5 px-2 rounded-xl text-xs font-black flex flex-col items-center gap-1.5 transition-all cursor-pointer ${bookingType === 'AIRPORT_DROP'
+                    ? 'bg-white text-slate-900 border-2 border-[#078A32] shadow-md ring-2 ring-emerald-100 scale-[1.02]'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50 border-2 border-transparent'
+                  }`}
               >
-                <span>Continue to Locations</span>
-                <ArrowRight className="w-4 h-4" />
+                <div className={`p-1.5 rounded-lg ${bookingType === 'AIRPORT_DROP' ? 'bg-orange-100 text-[#F0441D]' : 'bg-slate-100 text-slate-500'}`}>
+                  <Plane className="w-4 h-4 -rotate-45" />
+                </div>
+                <div className="flex items-center gap-1">
+                  <span>Airport Drop</span>
+                  {bookingType === 'AIRPORT_DROP' && <span className="w-1.5 h-1.5 rounded-full bg-[#078A32]" />}
+                </div>
               </button>
-            ) : (
+
               <button
-                disabled
-                className="opacity-50 cursor-not-allowed flex items-center gap-2 bg-slate-200 text-slate-600 font-bold text-xs sm:text-sm px-6 py-3 rounded-xl"
+                type="button"
+                onClick={() => setBookingType('AIRPORT_PICKUP')}
+                className={`py-3.5 px-2 rounded-xl text-xs font-black flex flex-col items-center gap-1.5 transition-all cursor-pointer ${bookingType === 'AIRPORT_PICKUP'
+                    ? 'bg-white text-slate-900 border-2 border-[#078A32] shadow-md ring-2 ring-emerald-100 scale-[1.02]'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50 border-2 border-transparent'
+                  }`}
               >
-                <span>Fleet Cab Unavailable in Firestore</span>
+                <div className={`p-1.5 rounded-lg ${bookingType === 'AIRPORT_PICKUP' ? 'bg-orange-100 text-[#F0441D]' : 'bg-slate-100 text-slate-500'}`}>
+                  <Plane className="w-4 h-4 rotate-45" />
+                </div>
+                <div className="flex items-center gap-1">
+                  <span>Airport Pickup</span>
+                  {bookingType === 'AIRPORT_PICKUP' && <span className="w-1.5 h-1.5 rounded-full bg-[#078A32]" />}
+                </div>
               </button>
-            )}
-          </div>
-        </div>
-      )}
 
-      {/* STEP 2: LOCATIONS & AIRPORT SPECIFICS */}
-      {step === 2 && (
-        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 animate-fade-in">
-          <div>
-            <h2 className="text-lg font-black text-[#061B33]">Step 2: Pickup & Drop Off</h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Select pickup and destination on the map pointer or enter exact addresses.
-            </p>
-          </div>
-
-          {/* Interactive Visual Map Location Marker Picker */}
-          <div id="visual-map-section" className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-[#078A32]" />
-                <span>Visual Map Marker Picker (Leaflet Street View)</span>
-              </span>
-              <span className="text-[10px] text-[#078A32] font-black uppercase tracking-wider bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                Tap anywhere or drag pins
-              </span>
+              <button
+                type="button"
+                onClick={() => setBookingType('LOCAL_CITY')}
+                className={`py-3.5 px-2 rounded-xl text-xs font-black flex flex-col items-center gap-1.5 transition-all cursor-pointer ${bookingType === 'LOCAL_CITY'
+                    ? 'bg-white text-slate-900 border-2 border-[#078A32] shadow-md ring-2 ring-emerald-100 scale-[1.02]'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50 border-2 border-transparent'
+                  }`}
+              >
+                <div className={`p-1.5 rounded-lg ${bookingType === 'LOCAL_CITY' ? 'bg-emerald-100 text-[#078A32]' : 'bg-slate-100 text-slate-500'}`}>
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div className="flex items-center gap-1">
+                  <span>Local City</span>
+                  {bookingType === 'LOCAL_CITY' && <span className="w-1.5 h-1.5 rounded-full bg-[#078A32]" />}
+                </div>
+              </button>
             </div>
-            <LocationPickerMap
-              pickup={pickup}
-              drop={drop}
-              onSelectPickup={setPickup}
-              onSelectDrop={setDrop}
-              activeTarget={activePointerTarget}
-              setActiveTarget={setActivePointerTarget}
-            />
           </div>
 
-          {/* Airport Selection if Airport Booking */}
+          {/* Quick Airport Selector Chips (Only if Airport Ride) */}
           {bookingType !== 'LOCAL_CITY' && (
-            <div className="space-y-3 p-4 rounded-2xl bg-orange-50/70 border border-orange-200 text-xs">
-              <label className="font-bold text-slate-800 block">Select Destination Airport:</label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <div className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                Choose Airport Destination
+              </div>
+              <div className="grid grid-cols-3 gap-2">
                 {[
-                  {
-                    code: 'IXR',
-                    name: 'Ranchi Airport (IXR)',
-                    fare: `₹${(pricing?.airports?.ranchi?.minimumFare || 3500).toLocaleString('en-IN')} – ₹${(pricing?.airports?.ranchi?.maximumFare || 4000).toLocaleString('en-IN')}`,
-                  },
-                  {
-                    code: 'DGH',
-                    name: 'Deoghar Airport (DGH)',
-                    fare: `₹${(pricing?.airports?.deoghar?.minimumFare || 3000).toLocaleString('en-IN')} – ₹${(pricing?.airports?.deoghar?.maximumFare || 3200).toLocaleString('en-IN')}`,
-                  },
-                  {
-                    code: 'RDP',
-                    name: 'Durgapur Airport (RDP)',
-                    fare: `₹${(pricing?.airports?.durgapur?.minimumFare || 2500).toLocaleString('en-IN')} – ₹${(pricing?.airports?.durgapur?.maximumFare || 3000).toLocaleString('en-IN')}`,
-                  },
+                  { code: 'IXR', name: 'Ranchi', detail: 'IXR Airport' },
+                  { code: 'DGH', name: 'Deoghar', detail: 'DGH Airport' },
+                  { code: 'RDP', name: 'Durgapur', detail: 'RDP Airport' },
                 ].map((a) => (
                   <button
                     key={a.code}
                     type="button"
                     onClick={() => setSelectedAirportCode(a.code)}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      selectedAirportCode === a.code
-                        ? 'border-[#F0441D] bg-white shadow-sm ring-1 ring-orange-400 font-bold'
-                        : 'border-slate-200 bg-white/70 hover:bg-white'
-                    }`}
+                    className={`py-2.5 px-3 rounded-xl text-center border-2 transition-all cursor-pointer ${selectedAirportCode === a.code
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                        : 'bg-white text-slate-700 border-slate-300 hover:border-slate-400 hover:bg-slate-50'
+                      }`}
                   >
-                    <div className="text-slate-900 font-extrabold">{a.name}</div>
-                    <div className="text-[#F0441D] font-bold text-[11px] mt-1">{a.fare}</div>
+                    <div className="text-xs font-black">{a.name}</div>
+                    <div className={`text-[10px] font-semibold ${selectedAirportCode === a.code ? 'text-emerald-400' : 'text-slate-500'}`}>
+                      {a.detail}
+                    </div>
                   </button>
                 ))}
               </div>
-
-              {/* Extra Flight Details for Airport Pickups */}
-              {bookingType === 'AIRPORT_PICKUP' && (
-                <div className="pt-3 border-t border-orange-200 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="font-semibold text-slate-700 block mb-1">Flight Number</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 6E-204"
-                      value={flightNumber}
-                      onChange={(e) => setFlightNumber(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 focus:outline-hidden"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-semibold text-slate-700 block mb-1">Expected Arrival Time</label>
-                    <input
-                      type="time"
-                      value={expectedArrival}
-                      onChange={(e) => setExpectedArrival(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 focus:outline-hidden"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-semibold text-slate-700 block mb-1">
-                      Flight Delay (mins)
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={flightDelayMinutes}
-                      onChange={(e) => setFlightDelayMinutes(Number(e.target.value))}
-                      placeholder="0"
-                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 focus:outline-hidden"
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
-          {/* Pickup Address */}
-          <div className="space-y-2 text-xs">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="font-bold text-slate-800 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Pickup Location</span>
-              </label>
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActivePointerTarget('pickup');
-                    document.getElementById('visual-map-section')?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="flex items-center gap-1 text-[11px] font-bold text-[#078A32] bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
-                >
-                  <MapPin className="w-3 h-3 text-[#078A32]" />
-                  <span>📍 Pick on Visual Map</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleUseCurrentLocation('pickup')}
-                  disabled={locationDetecting}
-                  className="flex items-center gap-1 text-[11px] font-bold text-slate-600 hover:text-slate-900 hover:underline"
-                >
-                  <Navigation className="w-3 h-3" />
-                  <span>{locationDetecting ? 'Detecting GPS...' : 'Use Device GPS'}</span>
-                </button>
-              </div>
-            </div>
-
-            <input
-              type="text"
-              required
-              value={pickup.address}
-              onChange={(e) => setPickup({ ...pickup, address: e.target.value })}
-              placeholder="Enter pickup address, hotel, or landmark..."
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
-            />
-
-            {/* Live Synchronized Pin Coordinates */}
-            <div className="flex items-center justify-between text-[11px] text-slate-400">
-              <span className="flex items-center gap-1 font-mono">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#078A32]" />
-                Pin Coordinates: {pickup.latitude.toFixed(4)}° N, {pickup.longitude.toFixed(4)}° E
-              </span>
-              <span className="text-[#078A32] font-semibold">Marker A Synced</span>
-            </div>
-
-            {/* Quick Dhanbad Presets */}
-            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[10px] text-slate-400 font-semibold">Quick Dhanbad Presets:</span>
-              {getPresetLocations().slice(0, 3).map((preset) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  onClick={() => setPickup(preset)}
-                  className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded-md transition-colors"
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Drop Address */}
-          <div className="space-y-2 text-xs">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="font-bold text-slate-800 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-rose-600" />
-                <span>Destination / Drop Location</span>
-              </label>
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActivePointerTarget('drop');
-                    document.getElementById('visual-map-section')?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="flex items-center gap-1 text-[11px] font-bold text-[#F0441D] bg-orange-50 hover:bg-orange-100 border border-orange-200 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
-                >
-                  <Compass className="w-3 h-3 text-[#F0441D]" />
-                  <span>🎯 Pick on Visual Map</span>
-                </button>
-
-                {bookingType === 'LOCAL_CITY' && (
+          {/* Location Inputs Card */}
+          <div className="bg-white p-5 rounded-3xl border-2 border-slate-200 shadow-md space-y-5">
+            {/* Pickup */}
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="text-sm font-black text-slate-800 flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-[#078A32] ring-4 ring-emerald-100" />
+                  <span>Pickup Location</span>
+                </label>
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => handleUseCurrentLocation('drop')}
-                    className="flex items-center gap-1 text-[11px] font-bold text-slate-600 hover:text-slate-900 hover:underline"
+                    onClick={() => setActivePinPointer(activePinPointer === 'pickup' ? null : 'pickup')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black shadow-xs transition-all active:scale-95 cursor-pointer border-2 ${
+                      activePinPointer === 'pickup'
+                        ? 'bg-[#078A32] text-white border-[#078A32] shadow-sm'
+                        : 'bg-emerald-50 text-[#078A32] border-emerald-300 hover:bg-emerald-100 hover:border-emerald-400'
+                    }`}
                   >
-                    <Navigation className="w-3 h-3" />
-                    <span>Use My Location</span>
+                    <MapPin className="w-3.5 h-3.5 shrink-0" />
+                    <span>{activePinPointer === 'pickup' ? 'Hide Map' : 'Set on Map'}</span>
                   </button>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => handleUseCurrentLocation('pickup')}
+                    disabled={locationDetecting}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border-2 border-slate-300 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                  >
+                    <Navigation className={`w-3.5 h-3.5 text-slate-600 ${locationDetecting ? 'animate-spin' : ''}`} />
+                    <span>{locationDetecting ? 'Locating...' : 'Use GPS'}</span>
+                  </button>
+                </div>
               </div>
+              <AddressAutocompleteInput
+                value={pickup.address}
+                onChange={(val) => setPickup({ ...pickup, address: val })}
+                onSelect={(suggestion) =>
+                  setPickup({
+                    address: suggestion.address,
+                    latitude: suggestion.latitude,
+                    longitude: suggestion.longitude,
+                  })
+                }
+                placeholder="Type pickup hotel, area, or landmark..."
+                focusRingClass="focus:ring-emerald-100"
+                accentClass="hover:bg-emerald-50"
+                accentIconColor="#078A32"
+                searchBias="Dhanbad, Jharkhand, India"
+                localSuggestions={presetSuggestions}
+                required
+              />
+
+              {/* Minimal Expandable Map Pin for Pickup */}
+              {activePinPointer === 'pickup' && (
+                <MinimalLocationPinModal
+                  location={pickup}
+                  onChange={(loc) => setPickup(loc)}
+                  label="Pickup Pin for Driver Navigation"
+                  pinColor="#078A32"
+                  height="h-48 sm:h-56"
+                />
+              )}
             </div>
 
-            <input
-              type="text"
-              required
-              value={drop.address}
-              onChange={(e) => setDrop({ ...drop, address: e.target.value })}
-              placeholder="Enter drop destination address..."
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
-            />
+            {/* Optional Stops Added in Step 1 */}
+            {stops.map((stop, idx) => {
+              const stopKey = `stop-${idx}`;
+              return (
+                <div key={stop.id || idx} className="pt-4 border-t-2 border-slate-100 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-black text-slate-800 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-xs font-black flex items-center justify-center shadow-xs">
+                        {idx + 1}
+                      </span>
+                      <span>Stop #{idx + 1}</span>
+                    </span>
 
-            {/* Live Synchronized Pin Coordinates */}
-            <div className="flex items-center justify-between text-[11px] text-slate-400">
-              <span className="flex items-center gap-1 font-mono">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#F0441D]" />
-                Pin Coordinates: {drop.latitude.toFixed(4)}° N, {drop.longitude.toFixed(4)}° E
-              </span>
-              <span className="text-[#F0441D] font-semibold">Marker B Synced</span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setActivePinPointer(activePinPointer === stopKey ? null : stopKey)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black shadow-xs transition-all active:scale-95 cursor-pointer border-2 ${
+                          activePinPointer === stopKey
+                            ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+                            : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                        }`}
+                      >
+                        <MapPin className="w-3.5 h-3.5 shrink-0" />
+                        <span>{activePinPointer === stopKey ? 'Hide Map' : 'Set on Map'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveStop(idx)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border-2 border-rose-200 transition-all active:scale-95 cursor-pointer"
+                        title="Remove Stop"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <AddressAutocompleteInput
+                    value={stop.address}
+                    onChange={(val) => {
+                      const updated = [...stops];
+                      updated[idx].address = val;
+                      setStops(updated);
+                    }}
+                    onSelect={(sug) => {
+                      const updated = [...stops];
+                      updated[idx].address = sug.address;
+                      updated[idx].latitude = sug.latitude;
+                      updated[idx].longitude = sug.longitude;
+                      setStops(updated);
+                    }}
+                    placeholder={`Stop #${idx + 1} address or landmark`}
+                    focusRingClass="focus:ring-amber-100"
+                    accentClass="hover:bg-amber-50"
+                    accentIconColor="#f59e0b"
+                    searchBias="Dhanbad, Jharkhand, India"
+                    localSuggestions={presetSuggestions}
+                  />
+
+                  {/* Minimal Expandable Map Pin for Stop */}
+                  {activePinPointer === stopKey && (
+                    <MinimalLocationPinModal
+                      location={{
+                        address: stop.address,
+                        latitude: stop.latitude,
+                        longitude: stop.longitude,
+                      }}
+                      onChange={(loc) => {
+                        const updated = [...stops];
+                        updated[idx].address = loc.address;
+                        updated[idx].latitude = loc.latitude;
+                        updated[idx].longitude = loc.longitude;
+                        setStops(updated);
+                      }}
+                      label={`Stop #${idx + 1} Exact Pin`}
+                      pinColor="#f59e0b"
+                      height="h-48 sm:h-56"
+                    />
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Destination */}
+            <div className="pt-4 border-t-2 border-slate-100 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="text-sm font-black text-slate-800 flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-[#F0441D] ring-4 ring-rose-100" />
+                  <span>Where To? (Drop)</span>
+                </label>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setActivePinPointer(activePinPointer === 'drop' ? null : 'drop')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black shadow-xs transition-all active:scale-95 cursor-pointer border-2 ${
+                      activePinPointer === 'drop'
+                        ? 'bg-[#F0441D] text-white border-[#F0441D] shadow-sm'
+                        : 'bg-orange-50 text-[#F0441D] border-orange-300 hover:bg-orange-100 hover:border-orange-400'
+                    }`}
+                  >
+                    <MapPin className="w-3.5 h-3.5 shrink-0" />
+                    <span>{activePinPointer === 'drop' ? 'Hide Map' : 'Set on Map'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleAddStop}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border-2 border-slate-300 shadow-xs transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-slate-600" />
+                    <span>+ Add Stop</span>
+                  </button>
+                </div>
+              </div>
+              <AddressAutocompleteInput
+                value={drop.address}
+                onChange={(val) => setDrop({ ...drop, address: val })}
+                onSelect={(suggestion) =>
+                  setDrop({
+                    address: suggestion.address,
+                    latitude: suggestion.latitude,
+                    longitude: suggestion.longitude,
+                  })
+                }
+                placeholder="Enter destination address or airport..."
+                focusRingClass="focus:ring-rose-100"
+                accentClass="hover:bg-orange-50"
+                accentIconColor="#F0441D"
+                searchBias="Jharkhand, India"
+                localSuggestions={presetSuggestions}
+                required
+              />
+
+              {/* Minimal Expandable Map Pin for Drop */}
+              {activePinPointer === 'drop' && (
+                <MinimalLocationPinModal
+                  location={drop}
+                  onChange={(loc) => setDrop(loc)}
+                  label="Drop-off Pin for Driver Navigation"
+                  pinColor="#F0441D"
+                  height="h-48 sm:h-56"
+                />
+              )}
             </div>
           </div>
 
-          {/* Route Itinerary Planner: Optional Multi-Stop & Halt Planning */}
-          <RouteItineraryPlanner
-            stops={stops}
-            onChange={setStops}
-            bookingType={bookingType}
-            driverStayNights={driverStayNights}
-            onDriverStayChange={setDriverStayNights}
-          />
-
-          {locationError && (
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>{locationError}</span>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-            <button
-              onClick={() => setStep(1)}
-              className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 font-bold text-xs"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back</span>
-            </button>
-
-            <button
-              onClick={() => setStep(3)}
-              className="flex items-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-bold text-xs sm:text-sm px-6 py-3 rounded-xl shadow-md transition-all"
-            >
-              <span>Continue to Schedule</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* STEP 3: DATE & TIME */}
-      {step === 3 && (
-        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 animate-fade-in">
-          <div>
-            <h2 className="text-lg font-black text-[#061B33]">Step 3: Date & Pickup Time</h2>
-            <p className="text-xs text-slate-500 mt-1">
-              All timings are strictly scheduled in Indian Standard Time (IST).
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+          {/* Date & Time Picker */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-2 gap-3">
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Trip Date</label>
+              <label className="text-xs font-bold text-slate-700 block mb-1">Pick Date</label>
               <div className="relative">
-                <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                 <input
                   type="date"
                   required
                   min={new Date().toISOString().split('T')[0]}
                   value={bookingDate}
                   onChange={(e) => setBookingDate(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800"
                 />
               </div>
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Pickup Time (IST)</label>
+              <label className="text-xs font-bold text-slate-700 block mb-1">Pickup Time</label>
               <div className="relative">
-                <Clock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <Clock className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                 <input
                   type="time"
                   required
                   value={pickupTime}
                   onChange={(e) => setPickupTime(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800"
                 />
               </div>
             </div>
           </div>
 
-          {/* Availability Schedule Notice */}
-          {primaryVehicle?.availabilitySchedule && !primaryVehicle.availabilitySchedule.is24x7 && (
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
-              <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-[#078A32]" />
-                <span>Primary Cab Operating Hours</span>
-              </div>
-              <p className="text-[11px] text-slate-600">
-                Operating Window: <strong>{primaryVehicle.availabilitySchedule.dailyStartTime || '06:00'}</strong> to{' '}
-                <strong>{primaryVehicle.availabilitySchedule.dailyEndTime || '23:00'} IST</strong> (
-                {primaryVehicle.availabilitySchedule.availableDays?.join(', ')}).
-              </p>
-            </div>
-          )}
-
-          {/* Warning if selected time is outside operating window */}
-          {primaryVehicle?.availabilitySchedule &&
-            !primaryVehicle.availabilitySchedule.is24x7 &&
-            ((primaryVehicle.availabilitySchedule.dailyStartTime && pickupTime < primaryVehicle.availabilitySchedule.dailyStartTime) ||
-              (primaryVehicle.availabilitySchedule.dailyEndTime && pickupTime > primaryVehicle.availabilitySchedule.dailyEndTime)) && (
-              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <span>
-                  Notice: Your selected pickup time ({pickupTime} IST) is outside the cab&apos;s daily operating window ({primaryVehicle.availabilitySchedule.dailyStartTime} — {primaryVehicle.availabilitySchedule.dailyEndTime} IST).
-                </span>
-              </div>
-            )}
-
-          {/* Night Charge Indicator Note */}
-          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
-            <div className="font-bold text-slate-800 flex items-center gap-1.5">
-              <Info className="w-3.5 h-3.5 text-[#078A32]" />
-              <span>Standard Operational Windows</span>
-            </div>
-            <p className="text-[11px] text-slate-500">
-              Journeys beginning during night hours ({pricing?.nightStart || '10:00 PM'} to {pricing?.nightEnd || '06:00 AM'}) include the rate-card
-              specified fixed night allowance of ₹{pricing?.nightCharge || 300}.
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-            <button
-              onClick={() => setStep(2)}
-              className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 font-bold text-xs"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back</span>
-            </button>
-
-            <button
-              onClick={() => setStep(4)}
-              className="flex items-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-bold text-xs sm:text-sm px-6 py-3 rounded-xl shadow-md transition-all"
-            >
-              <span>Review Route & Fare</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
+          {/* Big Clear Primary CTA Button */}
+          <button
+            type="button"
+            onClick={() => setStep(2)}
+            className="w-full bg-[#078A32] hover:bg-[#056B27] active:scale-[0.99] text-white font-black text-base py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <span>See Prices & Route</span>
+            <ArrowRight className="w-5 h-5" />
+          </button>
         </div>
       )}
 
-      {/* STEP 4: ROUTE & FARE BREAKDOWN */}
-      {step === 4 && (
-        <div className="space-y-6 animate-fade-in">
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-black text-[#061B33]">Step 4: Route & Calculated Fare</h2>
-                <p className="text-xs text-slate-500">
-                  {distanceKm} km • ~{durationMinutes} minutes estimated travel time
-                </p>
-              </div>
-              <span className="text-xs font-bold text-[#078A32] bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
-                Verified Highway Route
-              </span>
-            </div>
-
-            {/* Interactive MapView */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* STEP 2: ROUTE & FARE PREVIEW (Transparent & Simple)             */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {step === 2 && (
+        <div className="space-y-4 animate-fade-in">
+          {/* Route Map (Clear visual) */}
+          <div className="rounded-3xl overflow-hidden border border-slate-200 shadow-sm bg-slate-100">
             <MapView
               pickup={pickup}
               drop={drop}
@@ -957,246 +726,291 @@ function BookCabContent() {
               distanceKm={distanceKm}
               durationMinutes={durationMinutes}
               totalHaltMinutes={totalHaltMinutes}
-              height="h-64 sm:h-80"
+              height="h-56 sm:h-64"
             />
+          </div>
 
-            {/* Complete Itinerary & Halts Timeline */}
-            <RouteItineraryView
-              pickup={pickup}
-              drop={drop}
-              stops={stops}
-              distanceKm={distanceKm}
-              drivingDurationMinutes={drivingDurationMinutes}
-              totalHaltMinutes={totalHaltMinutes}
-              totalDurationMinutes={durationMinutes}
-              pickupTime={pickupTime}
-              bookingDate={bookingDate}
-              legs={routeLegs}
-            />
+          {/* Vehicle & Price Card (Like Uber) */}
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-md">
+                  <Car className="w-6 h-6 text-[#42B900]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    {primaryVehicle ? `${primaryVehicle.make} ${primaryVehicle.model}` : 'Comfort AC Sedan'}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {distanceKm} km • ~{Math.round(durationMinutes / 60)} hrs travel time
+                  </p>
+                </div>
+              </div>
 
-            {/* Itemized Fare Breakdown */}
-            <FareBreakdown
-              fare={currentFare}
-              bookingType={bookingType}
-              showEstimatedRange={bookingType !== 'LOCAL_CITY'}
-            />
-
-            <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-              <button
-                onClick={() => setStep(3)}
-                className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 font-bold text-xs"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back</span>
-              </button>
-
-              <button
-                onClick={() => setStep(5)}
-                className="flex items-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-bold text-xs sm:text-sm px-6 py-3 rounded-xl shadow-md transition-all"
-              >
-                <span>Proceed to Confirmation</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+              <div className="text-right">
+                <div className="text-2xl font-black text-[#078A32]">
+                  ₹{currentFare.totalFare.toLocaleString('en-IN')}
+                </div>
+                <div className="text-[10px] text-slate-400 font-semibold uppercase">Fixed Estimate</div>
+              </div>
             </div>
+
+            {/* Inclusions summary */}
+            <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <div className="flex items-center gap-1.5 font-bold">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#078A32]" />
+                <span>Dedicated AC Cab</span>
+              </div>
+              <div className="flex items-center gap-1.5 font-bold">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#078A32]" />
+                <span>Doorstep Pickup</span>
+              </div>
+              <div className="flex items-center gap-1.5 font-bold">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#078A32]" />
+                <span>No Surge Pricing</span>
+              </div>
+              <div className="flex items-center gap-1.5 font-bold">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#078A32]" />
+                <span>Cash or UPI to driver</span>
+              </div>
+            </div>
+
+            {/* Extra Costs & Exclusions Notice - Bold & Transparent */}
+            <div className="p-3.5 rounded-2xl bg-amber-50 border-2 border-amber-300 text-amber-950 space-y-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                <span className="text-xs font-black uppercase tracking-wider text-amber-900">
+                  Other Costs & Extras (Payable At Actuals)
+                </span>
+              </div>
+              <ul className="text-xs font-bold space-y-1 list-disc list-inside text-amber-900">
+                <li>
+                  <span className="font-extrabold text-slate-900">Tolls & State Border Tax:</span> Extra at actual toll receipts during trip
+                </li>
+                <li>
+                  <span className="font-extrabold text-slate-900">Airport / Station Parking:</span> Extra at actuals if applicable
+                </li>
+                <li>
+                  <span className="font-extrabold text-slate-900">Waiting / Extra Halts:</span> 30 mins free; standard waiting rate card applies after
+                </li>
+              </ul>
+            </div>
+
+            {/* Optional Trip Preferences Accordion */}
+            <div className="border-t border-slate-100 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowStopsSection(!showStopsSection)}
+                className="w-full flex items-center justify-between text-xs font-bold text-slate-700 py-1"
+              >
+                <span>Add Halt / Driver Night Stay (Optional)</span>
+                {showStopsSection ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+
+              {showStopsSection && (
+                <div className="pt-3 space-y-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600">Overnight Driver Stay:</span>
+                    <div className="flex items-center gap-1">
+                      {[0, 1, 2].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => setDriverStayNights(n)}
+                          className={`px-3 py-1 rounded-lg font-bold border transition-all ${driverStayNights === n
+                              ? 'bg-slate-900 text-white border-slate-900'
+                              : 'bg-white text-slate-700 border-slate-200'
+                            }`}
+                        >
+                          {n === 0 ? 'None' : `${n} Night`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Nav Buttons */}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setStep(1)}
+              className="py-4 px-5 rounded-2xl bg-slate-100 hover:bg-slate-200 font-bold text-xs text-slate-700 flex items-center gap-1"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Edit Trip</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStep(3)}
+              className="flex-1 bg-[#078A32] hover:bg-[#056B27] active:scale-[0.99] text-white font-black text-base py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all"
+            >
+              <span>Continue with ₹{currentFare.totalFare.toLocaleString('en-IN')}</span>
+              <ArrowRight className="w-5 h-5" />
+            </button>
           </div>
         </div>
       )}
 
-      {/* STEP 5: FINAL CONFIRMATION & CONTACT DETAILS */}
-      {step === 5 && (
-        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 animate-fade-in">
-          <div>
-            <h2 className="text-lg font-black text-[#061B33]">Step 5: Confirm Passenger Details</h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Our driver and operations desk will reach out on this phone number.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* STEP 3: PASSENGER & CONFIRMATION                                */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {step === 3 && (
+        <div className="space-y-4 animate-fade-in">
+          {/* Booking Summary Pill */}
+          <div className="bg-slate-900 text-white p-4 rounded-2xl flex items-center justify-between text-xs">
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Passenger Name</label>
-              <input
-                type="text"
-                required
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="e.g. Amit Sharma"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
-              />
+              <div className="font-black text-sm text-[#42B900]">
+                ₹{currentFare.totalFare.toLocaleString('en-IN')}
+              </div>
+              <div className="text-slate-300 text-[11px] mt-0.5">
+                {bookingDate} at {pickupTime} IST
+              </div>
             </div>
-
-            <div>
-              <label className="font-bold text-slate-700 block mb-1">Contact Phone Number</label>
-              <input
-                type="tel"
-                required
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="+91 9876543210"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
-              />
+            <div className="text-right text-[11px] text-slate-400">
+              <span className="block font-bold text-white">{bookingType.replace('_', ' ')}</span>
+              <span>Pay after ride</span>
             </div>
           </div>
 
-          <div className="text-xs">
-            <label className="font-bold text-slate-700 block mb-1">
-              Special Instructions / Landmark Notes (Optional)
-            </label>
-            <textarea
-              rows={2}
-              value={customerNotes}
-              onChange={(e) => setCustomerNotes(e.target.value)}
-              placeholder="e.g. Near gate 2, carrying 2 suitcases, please call on arrival..."
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
-            />
-          </div>
+          {/* Passenger details */}
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+            <h3 className="text-sm font-black text-slate-900">Passenger Contact</h3>
 
-          {/* Customer Authentication Requirement */}
-          {!user ? (
-            <div className="bg-emerald-50/70 border-2 border-emerald-400/80 rounded-2xl p-5 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-emerald-200">
-                <div className="flex items-center gap-2">
-                  <User className="w-5 h-5 text-[#078A32]" />
-                  <span className="font-black text-sm text-[#061B33]">
-                    {authTab === 'signup' ? 'Create Rider Account & Request' : 'Sign In to Your Account'}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1 bg-white p-0.5 rounded-xl border border-slate-200 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => { setAuthTab('signup'); setAuthError(null); }}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
-                      authTab === 'signup' ? 'bg-[#078A32] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    New Rider
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setAuthTab('signin'); setAuthError(null); }}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
-                      authTab === 'signin' ? 'bg-[#061B33] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Sign In
-                  </button>
-                </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-black uppercase tracking-wider text-slate-700 block mb-1.5">
+                  Your Full Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="e.g. Rahul Sharma"
+                  className="w-full px-4 py-3.5 rounded-xl border-2 border-slate-300 bg-white shadow-xs text-sm font-semibold text-slate-900 focus:outline-hidden focus:border-[#078A32] focus:ring-4 focus:ring-emerald-100"
+                />
               </div>
 
-              <p className="text-xs text-slate-600 leading-relaxed">
-                {authTab === 'signup'
-                  ? 'Create your customer account with your email and password below. Your ride will be dispatched immediately.'
-                  : 'Enter your registered email and password to place your booking request.'}
-              </p>
+              <div>
+                <label className="text-xs font-black uppercase tracking-wider text-slate-700 block mb-1.5">
+                  Mobile Phone Number <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="+91 9876543210"
+                  className="w-full px-4 py-3.5 rounded-xl border-2 border-slate-300 bg-white shadow-xs text-sm font-semibold text-slate-900 focus:outline-hidden focus:border-[#078A32] focus:ring-4 focus:ring-emerald-100"
+                />
+              </div>
 
-              {authError && (
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-xs font-semibold flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-                  <span>{authError}</span>
+              {/* Special instruction notes */}
+              <div>
+                <label className="text-xs font-black uppercase tracking-wider text-slate-700 block mb-1.5">
+                  Driver Note / Landmark (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={customerNotes}
+                  onChange={(e) => setCustomerNotes(e.target.value)}
+                  placeholder="e.g. Near main gate, luggage assistance needed"
+                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 bg-white text-xs font-medium text-slate-900 focus:outline-hidden focus:border-[#078A32] focus:ring-4 focus:ring-emerald-100"
+                />
+              </div>
+            </div>
+
+            {/* Quick account setup if not logged in */}
+            {!user ? (
+              <div className="pt-3 border-t border-slate-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800">
+                    {authTab === 'signup' ? 'Create rider password' : 'Sign In'}
+                  </span>
+                  <div className="flex gap-1 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setAuthTab('signup')}
+                      className={`px-2 py-0.5 rounded-md font-bold ${authTab === 'signup' ? 'bg-[#078A32] text-white' : 'text-slate-500'
+                        }`}
+                    >
+                      New
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAuthTab('signin')}
+                      className={`px-2 py-0.5 rounded-md font-bold ${authTab === 'signin' ? 'bg-slate-900 text-white' : 'text-slate-500'
+                        }`}
+                    >
+                      Login
+                    </button>
+                  </div>
                 </div>
-              )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Email Address</label>
+                {authError && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 text-rose-700 text-xs font-semibold flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{authError}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <input
                     type="email"
                     required
                     value={authEmail}
                     onChange={(e) => setAuthEmail(e.target.value)}
-                    placeholder="e.g. rider@example.com"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
+                    placeholder="Email address"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
                   />
-                </div>
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Password</label>
                   <input
                     type="password"
                     required
-                    minLength={6}
                     value={authPassword}
                     onChange={(e) => setAuthPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
+                    placeholder="Create a password"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
                   />
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-300 flex items-center justify-between text-xs text-emerald-950">
-              <div className="flex items-center gap-2.5">
-                <CheckCircle2 className="w-5 h-5 text-[#078A32] shrink-0" />
-                <div>
-                  <span className="font-black text-slate-900 block">{user.name}</span>
-                  <span className="text-slate-600">{user.phone || user.email}</span>
+            ) : (
+              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-[#078A32]" />
+                  <span className="font-bold text-slate-800">{user.name || user.email}</span>
                 </div>
+                <span className="text-[10px] font-black uppercase text-[#078A32]">Logged In</span>
               </div>
-              <span className="text-[11px] font-extrabold uppercase bg-emerald-200/70 text-emerald-900 px-2.5 py-1 rounded-full">
-                Verified Account ✓
-              </span>
-            </div>
-          )}
-
-          {/* Booking Summary Box */}
-          <div className="bg-[#061B33] text-white p-5 rounded-2xl space-y-3">
-            <div className="flex items-center justify-between text-xs text-slate-300 pb-2 border-b border-slate-700">
-              <span>{bookingType.replace('_', ' ')}</span>
-              <span>
-                {bookingDate} • {pickupTime} IST
-              </span>
-            </div>
-
-            <div className="text-xs space-y-1">
-              <div className="truncate text-slate-200">
-                <strong className="text-emerald-400">From:</strong> {pickup.address}
-              </div>
-              <div className="truncate text-slate-200">
-                <strong className="text-rose-400">To:</strong> {drop.address}
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-slate-700 flex items-center justify-between">
-              <div>
-                <div className="text-[11px] text-slate-400">Total Calculated Cab Tariff</div>
-                <div className="text-xl sm:text-2xl font-black text-[#42B900]">
-                  ₹{currentFare.totalFare.toLocaleString('en-IN')}
-                </div>
-              </div>
-
-              <div className="text-right text-[11px] text-slate-400">
-                <span className="block font-semibold text-slate-200">Payment: Cash / UPI</span>
-                <span className="text-[10px] text-amber-300">Toll @ actual & parking extra</span>
-              </div>
-            </div>
-
-            {/* Toll & Parking Notice Pill */}
-            <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-400/30 text-amber-200 text-[11px] flex items-center gap-2">
-              <span className="font-extrabold text-amber-300 shrink-0">🛣️ Note:</span>
-              <span>Toll charges @ actual and parking fees are payable by customer directly apart from the cab fare.</span>
-            </div>
+            )}
           </div>
 
-          <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+          {/* Action buttons */}
+          <div className="flex items-center gap-3">
             <button
-              onClick={() => setStep(4)}
-              className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 font-bold text-xs"
+              type="button"
+              onClick={() => setStep(2)}
+              className="py-4 px-5 rounded-2xl bg-slate-100 hover:bg-slate-200 font-bold text-xs text-slate-700 flex items-center gap-1"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back</span>
             </button>
 
             <button
+              type="button"
               onClick={handleConfirmBooking}
               disabled={submitting}
-              className="flex items-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 disabled:opacity-50 text-white font-black text-sm sm:text-base px-8 py-3.5 rounded-xl shadow-xl transition-all"
+              className="flex-1 bg-[#078A32] hover:bg-[#056B27] active:scale-[0.99] disabled:opacity-50 text-white font-black text-base py-4 rounded-2xl shadow-xl flex items-center justify-center gap-2 cursor-pointer transition-all"
             >
               {submitting ? (
-                <span>Requesting Cab...</span>
+                <span>Confirming Booking...</span>
               ) : (
                 <>
                   <CheckCircle2 className="w-5 h-5" />
-                  <span>Confirm Booking — ₹{currentFare.totalFare.toLocaleString('en-IN')}</span>
+                  <span>Request Cab Now</span>
                 </>
               )}
             </button>
@@ -1212,7 +1026,7 @@ export default function BookCabPage() {
     <Suspense
       fallback={
         <div className="py-16 text-center text-xs text-slate-500">
-          Loading booking wizard...
+          Loading booking...
         </div>
       }
     >
@@ -1220,4 +1034,3 @@ export default function BookCabPage() {
     </Suspense>
   );
 }
-

@@ -54,6 +54,10 @@ export function generateBookingNumber(): string {
   return `TBZ-${year}${month}${day}-${randomSuffix}`;
 }
 
+export function generateStartOtp(): string {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
 export interface ConflictCheckResult {
   hasConflict: boolean;
   conflictingBooking?: Booking;
@@ -172,6 +176,7 @@ export async function createNewBooking(input: CreateBookingInput): Promise<Booki
   const newBooking: Booking = {
     id,
     bookingNumber,
+    startOtp: generateStartOtp(),
     customerId: input.customerId,
     customerName: input.customerName,
     customerPhone: input.customerPhone,
@@ -200,10 +205,10 @@ export async function createNewBooking(input: CreateBookingInput): Promise<Booki
 
   await saveBooking(newBooking);
 
-  // Notify Owner
+  // Notify Owner / Fleet Team only (do not broadcast to customer)
   const haltsInfo = validStops.length > 0 ? ` with ${validStops.length} intermediate stops/halts` : '';
   await addNotification({
-    userId: 'all',
+    userId: 'owner',
     title: 'New Booking Request',
     body: `${bookingNumber}: ${input.customerName} requested ${input.bookingType.replace('_', ' ')} on ${input.bookingDate} at ${input.pickupTime}${haltsInfo}.`,
     type: 'BOOKING_REQUESTED',
@@ -767,13 +772,118 @@ export async function returnVehicleToGarage(
     dutyStatus: 'ON_DUTY',
   });
 
+  // Internal garage status notification for owner desk only
   await addNotification({
-    userId: 'all',
+    userId: 'owner',
     title: 'Cab Returned to Garage',
     body: `Vehicle ${targetVeh?.registrationNumber || 'Cab'} has returned to Dhanbad Garage and is parked ready for next dispatch.`,
     type: 'SYSTEM_ALERT',
   });
 
   return { success: true };
+}
+
+/**
+ * Verifies customer OTP provided to driver before starting trip
+ */
+export async function verifyAndStartTrip(
+  bookingId: string,
+  enteredOtp: string,
+  actor: { name: string; role: 'driver'; id: string }
+): Promise<{ success: boolean; error?: string }> {
+  const booking = await getBookingById(bookingId);
+  if (!booking) return { success: false, error: 'Booking not found' };
+
+  if (booking.startOtp && booking.startOtp.trim() !== enteredOtp.trim()) {
+    return { success: false, error: 'Incorrect OTP. Please ask the passenger for their 4-digit Ride Start OTP.' };
+  }
+
+  return updateBookingTripStatus(bookingId, 'TRIP_STARTED', actor);
+}
+
+/**
+ * Updates live telemetry points & recalculated distance during a live trip
+ */
+export async function updateBookingTelemetry(
+  bookingId: string,
+  telemetryUpdate: Partial<Booking['telemetry']>
+): Promise<void> {
+  const booking = await getBookingById(bookingId);
+  if (!booking) return;
+
+  const current = booking.telemetry || {
+    actualDistanceKm: 0,
+    movingMinutes: 0,
+    idleMinutes: 0,
+    parkedMinutes: 0,
+    totalTripMinutes: 0,
+    averageSpeedKmh: 0,
+    topSpeedKmh: 0,
+  };
+
+  const updatedTelemetry = {
+    ...current,
+    ...telemetryUpdate,
+    lastPingAt: new Date().toISOString(),
+  };
+
+  await saveBooking({
+    ...booking,
+    telemetry: updatedTelemetry,
+  });
+}
+
+/**
+ * Completes trip with real GPS measured telemetry, updates final dynamic fare, and closes ride
+ */
+export async function completeTripWithTelemetry(
+  bookingId: string,
+  finalTelemetry: Booking['telemetry'],
+  actor: { name: string; role: 'driver' | 'owner'; id: string }
+): Promise<{ success: boolean; finalFare: number }> {
+  const booking = await getBookingById(bookingId);
+  if (!booking) throw new Error('Booking not found');
+
+  // Recalculate dynamic fare if actual distance exceeded planned distance
+  const plannedKm = booking.distanceKm;
+  const actualKm = finalTelemetry?.actualDistanceKm || plannedKm;
+  let newTotalFare = booking.fare.totalFare;
+
+  if (actualKm > plannedKm && booking.bookingType !== 'LOCAL_CITY') {
+    const extraKm = Math.max(0, actualKm - plannedKm);
+    const extraKmRate = booking.pricingSnapshot.extraKmRate || 14;
+    const additionalKmCharge = Math.round(extraKm * extraKmRate);
+    newTotalFare = booking.fare.totalFare + additionalKmCharge;
+  }
+
+  const now = new Date().toISOString();
+
+  const updatedBooking: Booking = {
+    ...booking,
+    status: 'TRIP_COMPLETED',
+    completedAt: now,
+    telemetry: finalTelemetry,
+    fare: {
+      ...booking.fare,
+      totalFare: newTotalFare,
+    },
+  };
+
+  await saveBooking(updatedBooking);
+
+  await addBookingEvent({
+    bookingId,
+    action: 'Trip Completed with GPS Telemetry',
+    performedBy: actor.name,
+    role: actor.role,
+    metadata: {
+      actualDistanceKm: finalTelemetry?.actualDistanceKm,
+      movingMinutes: finalTelemetry?.movingMinutes,
+      idleMinutes: finalTelemetry?.idleMinutes,
+      finalFare: newTotalFare,
+    },
+  });
+
+  return { success: true, finalFare: newTotalFare };
 }
 

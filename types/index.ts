@@ -108,9 +108,30 @@ export interface RouteStop {
   landmark?: string;
 }
 
+export interface TripTelemetryPoint {
+  latitude: number;
+  longitude: number;
+  timestamp: string; // ISO
+  speedKmh: number;
+  state: 'MOVING' | 'IDLE' | 'PARKED';
+}
+
+export interface TripTelemetry {
+  actualDistanceKm: number;
+  movingMinutes: number;
+  idleMinutes: number;
+  parkedMinutes: number;
+  totalTripMinutes: number;
+  averageSpeedKmh: number;
+  topSpeedKmh: number;
+  points?: TripTelemetryPoint[];
+  lastPingAt?: string;
+}
+
 export interface Booking {
   id: string;
   bookingNumber: string; // e.g. TBZ-20260924-001
+  startOtp?: string; // 4-digit ride start verification OTP (e.g. "4821")
 
   customerId: string;
   customerName: string;
@@ -146,6 +167,8 @@ export interface Booking {
 
   pricingSnapshot: PricingSnapshot;
   fare: FareCalculation;
+
+  telemetry?: TripTelemetry;
 
   paymentStatus: PaymentStatus;
   paymentMethod?: PaymentMethod;
@@ -289,25 +312,27 @@ export interface DriverLocation {
   dutyStatus?: 'ON_DUTY' | 'EN_ROUTE' | 'ON_TRIP' | 'RETURNING_TO_GARAGE' | 'OFF_DUTY';
 }
 
+export type NotificationType =
+  | 'BOOKING_REQUESTED'
+  | 'BOOKING_CONFIRMED'
+  | 'DRIVER_ASSIGNED'
+  | 'DRIVER_ARRIVING'
+  | 'TRIP_STARTED'
+  | 'TRIP_COMPLETED'
+  | 'PAYMENT_RECEIVED'
+  | 'BOOKING_CANCELLED'
+  | 'SYSTEM_ALERT'
+  | 'INSURANCE_EXPIRY_30_DAYS'
+  | 'FORCED_INSURANCE_EXPIRY_10_DAYS'
+  | 'DRIVER_AUTH_EXPIRING'
+  | 'DRIVER_AUTH_EXPIRED';
+
 export interface InAppNotification {
   id: string;
   userId: string;
   title: string;
   body: string;
-  type:
-    | 'BOOKING_REQUESTED'
-    | 'BOOKING_CONFIRMED'
-    | 'DRIVER_ASSIGNED'
-    | 'DRIVER_ARRIVING'
-    | 'TRIP_STARTED'
-    | 'TRIP_COMPLETED'
-    | 'PAYMENT_RECEIVED'
-    | 'BOOKING_CANCELLED'
-    | 'SYSTEM_ALERT'
-    | 'INSURANCE_EXPIRY_30_DAYS'
-    | 'FORCED_INSURANCE_EXPIRY_10_DAYS'
-    | 'DRIVER_AUTH_EXPIRING'
-    | 'DRIVER_AUTH_EXPIRED';
+  type: NotificationType;
   bookingId?: string;
   vehicleId?: string;
   driverId?: string;

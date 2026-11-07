@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { RouteStop } from '@/types';
 import { getPopularTouristAndHaltSpots } from '@/services/mapService';
+import { AddressAutocompleteInput } from '@/components/common/AddressAutocompleteInput';
 import {
   MapPin,
   Plus,
@@ -63,6 +64,19 @@ export const RouteItineraryPlanner: React.FC<RouteItineraryPlannerProps> = ({
   const [showPresetsModal, setShowPresetsModal] = useState<number | null>(null);
 
   const popularAttractions = getPopularTouristAndHaltSpots();
+
+  // Stable reference — built once, not on every render — so AddressAutocompleteInput's
+  // useCallback doesn't invalidate on each keystroke inside the stops map().
+  const stopLocalSuggestions = useMemo(
+    () =>
+      popularAttractions.map((a) => ({
+        label: a.label,
+        address: a.address,
+        latitude: a.latitude,
+        longitude: a.longitude,
+      })),
+    [] // popularAttractions is a pure function returning the same data — memo once
+  );
 
   const handleAddStop = () => {
     const newStopOrder = stops.length + 1;
@@ -279,13 +293,23 @@ export const RouteItineraryPlanner: React.FC<RouteItineraryPlannerProps> = ({
                       </button>
                     </div>
 
-                    <input
-                      type="text"
-                      required
+                    <AddressAutocompleteInput
                       value={stop.address}
-                      onChange={(e) => handleUpdateStop(index, { address: e.target.value })}
+                      onChange={(val) => handleUpdateStop(index, { address: val })}
+                      onSelect={(suggestion) =>
+                        handleUpdateStop(index, {
+                          address: suggestion.address,
+                          latitude: suggestion.latitude,
+                          longitude: suggestion.longitude,
+                        })
+                      }
                       placeholder="e.g. Maithon Dam, Shakti Mandir, Topchanchi Dhaba, Ozone Galleria..."
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                      focusRingClass="focus:ring-amber-500"
+                      accentClass="hover:bg-amber-50"
+                      accentIconColor="#d97706"
+                      searchBias="Dhanbad, Jharkhand, India"
+                      localSuggestions={stopLocalSuggestions}
+                      required
                     />
 
                     {/* Popular Attraction Chips Modal/Flyout */}

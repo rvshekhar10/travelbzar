@@ -693,7 +693,16 @@ export function subscribeToActiveTripLocation(
 // IN-APP NOTIFICATIONS
 // ==========================================
 export async function getNotifications(userId: string): Promise<InAppNotification[]> {
-  const targetIds = Array.from(new Set([userId, 'owner', 'all'])).filter(Boolean);
+  if (!userId) return [];
+
+  // Strict role and recipient isolation:
+  // - If userId is 'owner', retrieve notifications specifically meant for 'owner' or broadcast 'all'
+  // - For regular users (customers or drivers), only query notifications addressed to their unique userId or 'all'
+  const targetIds =
+    userId === 'owner'
+      ? ['owner', 'all']
+      : Array.from(new Set([userId, 'all'])).filter(Boolean);
+
   if (db) {
     try {
       const q = query(
@@ -714,12 +723,46 @@ export async function getNotifications(userId: string): Promise<InAppNotificatio
 }
 
 export async function addNotification(notification: Omit<InAppNotification, 'id' | 'createdAt' | 'read'>): Promise<void> {
+  const state = getLocalState();
+  const now = new Date().toISOString();
+
+  // If this notification is tied to a specific booking and recipient,
+  // stack / compile updates into a single live notification card
+  // rather than spamming multiple disjointed items for the same trip.
+  if (notification.bookingId && notification.userId) {
+    const existingEntry = Object.values(state.notifications).find(
+      (n) => n.bookingId === notification.bookingId && n.userId === notification.userId
+    );
+
+    if (existingEntry) {
+      const updated: InAppNotification = {
+        ...existingEntry,
+        ...notification,
+        id: existingEntry.id,
+        read: false, // Mark unread so customer sees the new status
+        createdAt: now,
+      };
+
+      state.notifications[existingEntry.id] = updated;
+      saveLocalState(state);
+
+      if (db) {
+        try {
+          await setDoc(doc(db, 'notifications', existingEntry.id), cleanForFirestore(updated));
+        } catch (err) {
+          console.warn('Firestore notification stack fallback:', err);
+        }
+      }
+      return;
+    }
+  }
+
   const id = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const item: InAppNotification = {
     ...notification,
     id,
     read: false,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
   };
 
   if (db) {
@@ -730,7 +773,6 @@ export async function addNotification(notification: Omit<InAppNotification, 'id'
     }
   }
 
-  const state = getLocalState();
   state.notifications[id] = item;
   saveLocalState(state);
 }
@@ -744,7 +786,47 @@ export async function markNotificationRead(id: string): Promise<void> {
   if (db) {
     try {
       await updateDoc(doc(db, 'notifications', id), { read: true });
-    } catch (e) {
+    } catch {
+      // non-fatal
+    }
+  }
+}
+
+export async function markAllNotificationsRead(userId: string): Promise<void> {
+  const state = getLocalState();
+  Object.values(state.notifications).forEach((n) => {
+    if (n.userId === userId || (userId === 'owner' && n.userId === 'owner')) {
+      n.read = true;
+    }
+  });
+  saveLocalState(state);
+
+  if (db) {
+    try {
+      const q = query(collection(db, 'notifications'), where('userId', '==', userId), where('read', '==', false));
+      const snap = await getDocs(q);
+      await Promise.all(snap.docs.map((d) => updateDoc(d.ref, { read: true })));
+    } catch {
+      // non-fatal
+    }
+  }
+}
+
+export async function clearAllNotifications(userId: string): Promise<void> {
+  const state = getLocalState();
+  Object.keys(state.notifications).forEach((id) => {
+    if (state.notifications[id].userId === userId || (userId === 'owner' && state.notifications[id].userId === 'owner')) {
+      delete state.notifications[id];
+    }
+  });
+  saveLocalState(state);
+
+  if (db) {
+    try {
+      const q = query(collection(db, 'notifications'), where('userId', '==', userId));
+      const snap = await getDocs(q);
+      await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+    } catch {
       // non-fatal
     }
   }

@@ -4,6 +4,7 @@ import { AuthProvider } from '@/lib/firebase/authContext';
 import { AppHeader } from '@/components/common/AppHeader';
 import { MobileBottomNav } from '@/components/common/MobileBottomNav';
 import { PWAInstallPrompt } from '@/components/common/PWAInstallPrompt';
+import { NotificationSoundListener } from '@/components/common/NotificationSoundListener';
 
 export const metadata: Metadata = {
   title: 'Travel BZAR | Hotels, Flights & Visa, Sustainable EV Cabs',
@@ -49,6 +50,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-[#F5F7F5] text-[#132238] flex flex-col antialiased" suppressHydrationWarning>
         <AuthProvider>
+          <NotificationSoundListener />
           <AppHeader />
           <main className="flex-1 pb-16 sm:pb-0">{children}</main>
           <MobileBottomNav />

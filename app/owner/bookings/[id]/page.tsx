@@ -447,6 +447,77 @@ export default function OwnerBookingDetailPage({ params }: Props) {
             )}
           </div>
 
+          {/* GPS Live Telemetry & Trip Diagnostics (Visualized for Owner) */}
+          {booking.telemetry && (
+            <div className="bg-slate-900 text-white p-6 rounded-3xl border-2 border-emerald-500/50 shadow-lg space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-[#42B900] animate-pulse" />
+                  <h2 className="text-sm font-black uppercase text-emerald-400 tracking-wider">
+                    Vehicle GPS Telemetry & Odometer Log
+                  </h2>
+                </div>
+                {booking.telemetry.lastPingAt && (
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    Updated: {new Date(booking.telemetry.lastPingAt).toLocaleTimeString('en-IN')} IST
+                  </span>
+                )}
+              </div>
+
+              {/* Real Distance vs Planned */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                <div className="bg-slate-800/80 p-3 rounded-2xl border border-slate-700">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Actual Distance</div>
+                  <div className="text-xl font-black text-[#42B900] font-mono mt-1">
+                    {booking.telemetry.actualDistanceKm.toFixed(1)} km
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">
+                    Planned: {booking.distanceKm} km
+                  </div>
+                </div>
+
+                <div className="bg-slate-800/80 p-3 rounded-2xl border border-slate-700">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Time on Road</div>
+                  <div className="text-xl font-black text-sky-400 font-mono mt-1">
+                    {booking.telemetry.movingMinutes} mins
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">
+                    Speed: ~{booking.telemetry.averageSpeedKmh || 0} km/h
+                  </div>
+                </div>
+
+                <div className="bg-slate-800/80 p-3 rounded-2xl border border-slate-700">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Idle / Signals</div>
+                  <div className="text-xl font-black text-amber-400 font-mono mt-1">
+                    {booking.telemetry.idleMinutes} mins
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Engine running idle</div>
+                </div>
+
+                <div className="bg-slate-800/80 p-3 rounded-2xl border border-slate-700">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Parked / Halts</div>
+                  <div className="text-xl font-black text-rose-400 font-mono mt-1">
+                    {booking.telemetry.parkedMinutes} mins
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Stationary engine off</div>
+                </div>
+              </div>
+
+              {/* Telemetry Variance Banner */}
+              {booking.telemetry.actualDistanceKm > booking.distanceKm && (
+                <div className="p-3 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-200 text-xs flex items-center justify-between">
+                  <span>
+                    Detour Variance Detected: +
+                    {(booking.telemetry.actualDistanceKm - booking.distanceKm).toFixed(1)} km above initial quote.
+                  </span>
+                  <span className="font-bold text-[#42B900]">
+                    Fare adjusted to ₹{booking.fare.totalFare.toLocaleString('en-IN')}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Audit Event Timeline */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-3">
             <div className="flex items-center gap-2 pb-2 border-b border-slate-100">

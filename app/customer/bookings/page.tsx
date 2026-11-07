@@ -243,7 +243,7 @@ export default function CustomerBookingsPage() {
                   <div className="flex items-center gap-2 mt-2">
                     {b.status === 'TRIP_COMPLETED' && (
                       <Link
-                        href={`/owner/receipt/${b.id}`}
+                        href={`/receipt/${b.id}`}
                         title="Print Digital Invoice"
                         className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
                       >

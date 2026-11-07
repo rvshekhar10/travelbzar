@@ -39,6 +39,7 @@ import {
 import {
   acceptBookingByDriver,
   updateBookingTripStatus,
+  verifyAndStartTrip,
   recordBookingPayment,
   returnVehicleToGarage,
 } from '@/services/bookingService';
@@ -53,6 +54,12 @@ export default function DriverDashboardPage() {
   const [onDuty, setOnDuty] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+
+  // OTP Verification Modal State
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otpTrip, setOtpTrip] = useState<Booking | null>(null);
+  const [enteredOtp, setEnteredOtp] = useState('');
+  const [otpError, setOtpError] = useState<string | null>(null);
 
   // Payment Collection Modal State
   const [paymentTrip, setPaymentTrip] = useState<Booking | null>(null);
@@ -155,12 +162,36 @@ export default function DriverDashboardPage() {
     }
   };
 
-  // Step 3: Start Ride (Customer Boarded)
-  const handleStartTrip = async (bookingId: string) => {
+  // Step 3: Open OTP verification modal to start trip
+  const handleOpenOtpModal = (trip: Booking) => {
+    setOtpTrip(trip);
+    setEnteredOtp('');
+    setOtpError(null);
+    setShowOtpModal(true);
+  };
+
+  // Step 3b: Verify OTP and Start Ride
+  const handleVerifyOtpAndStart = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpTrip) return;
+    setOtpError(null);
+
+    if (!enteredOtp.trim()) {
+      setOtpError('Please ask customer for their 4-digit Ride Start OTP.');
+      return;
+    }
+
     setActionLoading(true);
     try {
-      await updateBookingTripStatus(bookingId, 'TRIP_STARTED', actor);
-      await refresh();
+      const res = await verifyAndStartTrip(otpTrip.id, enteredOtp, actor);
+      if (res.success) {
+        setShowOtpModal(false);
+        setOtpTrip(null);
+        setEnteredOtp('');
+        await refresh();
+      } else {
+        setOtpError(res.error || 'Incorrect OTP. Please ask customer to verify code on their screen.');
+      }
     } finally {
       setActionLoading(false);
     }
@@ -410,12 +441,12 @@ export default function DriverDashboardPage() {
 
               {currentTrip.status === 'DRIVER_ARRIVED' && (
                 <button
-                  onClick={() => handleStartTrip(currentTrip.id)}
+                  onClick={() => handleOpenOtpModal(currentTrip)}
                   disabled={actionLoading}
-                  className="w-full bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-black py-4 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 text-sm sm:text-base animate-pulse"
+                  className="w-full bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white font-black py-4 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 text-sm sm:text-base animate-pulse cursor-pointer"
                 >
                   <Play className="w-5 h-5 fill-white" />
-                  <span>START TRIP (CUSTOMER BOARDED)</span>
+                  <span>ENTER CUSTOMER OTP & START TRIP</span>
                 </button>
               )}
 
@@ -653,6 +684,65 @@ export default function DriverDashboardPage() {
           ))}
         </div>
       </div>
+
+      {/* 8. MODAL: ENTER RIDE START OTP TO START TRIP */}
+      {showOtpModal && otpTrip && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4 border-4 border-emerald-400">
+            <div className="text-center space-y-1">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 text-[#078A32] flex items-center justify-center mx-auto">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900">Enter Ride Start OTP</h3>
+              <p className="text-xs text-slate-500">
+                Ask passenger <strong>{otpTrip.customerName}</strong> for their 4-digit security code.
+              </p>
+            </div>
+
+            {otpError && (
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold text-center">
+                {otpError}
+              </div>
+            )}
+
+            <form onSubmit={handleVerifyOtpAndStart} className="space-y-4">
+              <input
+                type="text"
+                pattern="[0-9]*"
+                inputMode="numeric"
+                maxLength={4}
+                required
+                autoFocus
+                value={enteredOtp}
+                onChange={(e) => setEnteredOtp(e.target.value.replace(/[^0-9]/g, ''))}
+                placeholder="4-digit OTP"
+                className="w-full text-center text-3xl font-black font-mono tracking-widest py-3 rounded-2xl border-2 border-slate-300 focus:outline-hidden focus:border-[#078A32] focus:ring-4 focus:ring-emerald-100 bg-slate-50 text-slate-900"
+              />
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowOtpModal(false)}
+                  className="w-1/3 py-3 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading || enteredOtp.length < 4}
+                  className="flex-1 py-3 rounded-xl bg-[#078A32] hover:bg-[#056B27] active:scale-95 disabled:opacity-50 text-white font-black text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-1.5"
+                >
+                  {actionLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <span>Verify & Start Trip</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* COLLECT PAYMENT MODAL */}
       {paymentTrip && (

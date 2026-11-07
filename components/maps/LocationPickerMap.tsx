@@ -68,6 +68,7 @@ export const LocationPickerMap: React.FC<Props> = ({
   const [searchResults, setSearchResults] = useState<
     { name: string; lat: number; lng: number }[]
   >([]);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reverse Geocoding helper (OSM Nominatim with timeout and clean formatting)
   const reverseGeocode = async (lat: number, lng: number): Promise<string> => {
@@ -450,54 +451,68 @@ export const LocationPickerMap: React.FC<Props> = ({
     }
   };
 
-  // Search Address / Landmark
-  const handleSearchSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
+  // Search Address / Landmark — live debounced, no Enter required
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setSearchQuery(query);
 
-    // First check local Dhanbad hubs
-    const match = POPULAR_HUBS.find(
-      (h) =>
-        h.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        h.area.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
 
-    if (match) {
-      handleSelectPresetHub(match);
-      setSearchQuery('');
+    if (!query.trim() || query.length < 3) {
       setSearchResults([]);
       return;
     }
 
-    // Geocode online query via Nominatim
-    setIsSearching(true);
-    try {
-      const q = encodeURIComponent(`${searchQuery}, Jharkhand, India`);
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=4`,
-        {
-          headers: {
-            'Accept-Language': 'en',
-            'User-Agent': 'TravelBzarApp/1.0',
-          },
+    // Instant local hub match
+    const localMatches = POPULAR_HUBS.filter(
+      (h) =>
+        h.name.toLowerCase().includes(query.toLowerCase()) ||
+        h.area.toLowerCase().includes(query.toLowerCase())
+    ).map((h) => ({ name: `${h.name}, ${h.area}`, lat: h.lat, lng: h.lng }));
+
+    if (localMatches.length > 0) {
+      setSearchResults(localMatches);
+    }
+
+    // Debounce network search
+    searchDebounceRef.current = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const res = await fetch(`/api/places?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        if (Array.isArray(data.results) && data.results.length > 0) {
+          const networkResults = data.results.map((item: { label: string; latitude: number; longitude: number }) => ({
+            name: item.label,
+            lat: item.latitude,
+            lng: item.longitude,
+          }));
+          // Merge local + network, deduplicate
+          const seen = new Set<string>(localMatches.map((r) => r.name));
+          const merged = [...localMatches];
+          for (const r of networkResults) {
+            if (!seen.has(r.name)) {
+              seen.add(r.name);
+              merged.push(r);
+            }
+          }
+          setSearchResults(merged.slice(0, 6));
+        } else if (localMatches.length === 0) {
+          setSearchResults([]);
         }
-      );
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        setSearchResults(
-          data.map((item) => ({
-            name: item.display_name.split(',').slice(0, 3).join(', '),
-            lat: parseFloat(item.lat),
-            lng: parseFloat(item.lon),
-          }))
-        );
-      } else {
-        alert(`No locations found for "${searchQuery}". Please try another landmark or click directly on the map.`);
+      } catch (err) {
+        console.error('Map search failed:', err);
+      } finally {
+        setIsSearching(false);
       }
-    } catch (err) {
-      console.error('Search failed:', err);
-    } finally {
-      setIsSearching(false);
+    }, 350);
+  };
+
+  // Keep old submit handler for keyboard Enter compatibility
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    // Results already show from live search; just select top result if exists
+    if (searchResults.length > 0) {
+      handleSelectSearchResult(searchResults[0]);
     }
   };
 
@@ -593,11 +608,19 @@ export const LocationPickerMap: React.FC<Props> = ({
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={handleSearchChange}
               placeholder="Search area, landmark or street..."
               className="w-full pl-9 pr-8 py-2.5 rounded-2xl bg-white/95 backdrop-blur-md text-xs font-semibold text-slate-800 placeholder-slate-400 border border-slate-300/80 shadow-md focus:outline-hidden focus:ring-2 focus:ring-[#078A32]"
             />
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+            {isSearching && (
+              <span className="absolute right-8 top-3">
+                <svg className="w-3.5 h-3.5 text-slate-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+              </span>
+            )}
             {searchQuery && (
               <button
                 type="button"
@@ -612,9 +635,14 @@ export const LocationPickerMap: React.FC<Props> = ({
             )}
           </form>
 
-          {/* Search Dropdown Results */}
+          {/* Live Search Dropdown Results */}
           {searchResults.length > 0 && (
             <div className="absolute top-12 left-0 right-0 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden z-30 divide-y divide-slate-100 animate-fade-in">
+              <div className="px-3 py-1.5 bg-slate-50 flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Location Suggestions
+                </span>
+              </div>
               {searchResults.map((res, i) => (
                 <button
                   key={i}
