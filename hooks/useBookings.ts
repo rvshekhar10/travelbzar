@@ -4,18 +4,29 @@ import { useState, useEffect, useCallback } from 'react';
 import { Booking } from '@/types';
 import { getBookings, getBookingById, subscribeToStore } from '@/lib/firebase/store';
 
-export function useBookings(filter?: { customerId?: string; driverId?: string; status?: string }) {
+export function useBookings(filter?: { customerId?: string; driverId?: string; status?: string; enabled?: boolean }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const isEnabled = filter?.enabled !== false;
+
   const refresh = useCallback(async () => {
+    if (!isEnabled) {
+      setBookings([]);
+      setLoading(false);
+      return;
+    }
     try {
-      const data = await getBookings(filter);
+      const data = await getBookings({
+        customerId: filter?.customerId,
+        driverId: filter?.driverId,
+        status: filter?.status,
+      });
       setBookings(data);
     } finally {
       setLoading(false);
     }
-  }, [filter?.customerId, filter?.driverId, filter?.status]);
+  }, [isEnabled, filter?.customerId, filter?.driverId, filter?.status]);
 
   useEffect(() => {
     refresh();

@@ -24,7 +24,10 @@ import { usePricing } from '@/hooks/usePricing';
 export default function CustomerDashboardPage() {
   const { user } = useAuth();
   const { pricing } = usePricing();
-  const { bookings, loading } = useBookings({ customerId: user?.id });
+  const { bookings, loading } = useBookings({
+    customerId: user?.id,
+    enabled: Boolean(user?.id),
+  });
 
   // Find most relevant active or upcoming booking
   const activeTrip = bookings.find((b) =>

@@ -1,18 +1,26 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/lib/firebase/authContext';
-import { User, Phone, Mail, CheckCircle2, ShieldCheck, LogOut } from 'lucide-react';
+import { User, Phone, Mail, CheckCircle2, ShieldCheck, LogOut, LogIn, UserPlus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function CustomerProfilePage() {
   const router = useRouter();
-  const { user, updateUserProfile, logout } = useAuth();
+  const { user, loading, updateUserProfile, logout } = useAuth();
 
   const [name, setName] = useState(user?.name || '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setName(user.name || '');
+      setPhone(user.phone || '');
+    }
+  }, [user]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,6 +30,56 @@ export default function CustomerProfilePage() {
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
+
+  if (loading) {
+    return (
+      <div className="py-12 px-4 max-w-xl mx-auto space-y-4">
+        <div className="h-8 w-40 bg-slate-200 animate-pulse rounded-lg" />
+        <div className="h-64 bg-slate-200 animate-pulse rounded-3xl" />
+      </div>
+    );
+  }
+
+  // Unauthenticated / Guest state
+  if (!user) {
+    return (
+      <div className="py-6 sm:py-10 px-4 sm:px-6 lg:px-8 max-w-xl mx-auto space-y-6">
+        <div>
+          <span className="text-xs font-bold uppercase tracking-wider text-[#078A32]">Account</span>
+          <h1 className="text-2xl sm:text-3xl font-black text-[#061B33] mt-1">My Profile</h1>
+        </div>
+
+        <div className="bg-white p-8 sm:p-10 rounded-3xl border border-slate-200 shadow-sm text-center space-y-5">
+          <div className="w-16 h-16 rounded-3xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto shadow-inner">
+            <User className="w-8 h-8 text-[#078A32]" />
+          </div>
+          <div>
+            <h2 className="text-lg font-black text-[#061B33]">You are not signed in</h2>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 leading-relaxed">
+              Sign in to manage your customer account, update phone number, and access your booking receipts.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <Link
+              href="/login?redirect=/customer/profile"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#078A32] hover:bg-[#056B27] active:scale-95 text-white text-xs font-bold px-6 py-3 rounded-xl shadow-md transition-all"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Sign In</span>
+            </Link>
+            <Link
+              href="/register?redirect=/customer/profile"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-6 py-3 rounded-xl transition-all"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Create Account</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="py-6 sm:py-10 px-4 sm:px-6 lg:px-8 max-w-xl mx-auto space-y-6">

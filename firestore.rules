@@ -38,6 +38,12 @@ service cloud.firestore {
       allow write: if isOwner();
     }
 
+    // Flight Markup Settings (Read and write by owner)
+    match /flightMarkupSettings/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner();
+    }
+
     // Vehicles (Read by authenticated, editable only by owner)
     match /vehicles/{vehicleId} {
       allow read: if isAuthenticated();

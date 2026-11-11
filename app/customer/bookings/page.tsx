@@ -23,7 +23,10 @@ import {
 
 export default function CustomerBookingsPage() {
   const { user, loading: authLoading } = useAuth();
-  const { bookings, loading: bookingsLoading } = useBookings({ customerId: user?.id });
+  const { bookings, loading: bookingsLoading } = useBookings({
+    customerId: user?.id,
+    enabled: Boolean(user?.id),
+  });
   const [activeTab, setActiveTab] = useState<'upcoming' | 'completed' | 'cancelled'>('upcoming');
 
   const upcomingStatuses = [
@@ -168,6 +171,32 @@ export default function CustomerBookingsPage() {
           {[1, 2].map((i) => (
             <div key={i} className="h-32 bg-slate-200 animate-pulse rounded-2xl" />
           ))}
+        </div>
+      ) : !user ? (
+        <div className="bg-white rounded-3xl p-10 border border-slate-200 text-center space-y-4 shadow-xs">
+          <div className="w-14 h-14 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+            <ShieldCheck className="w-7 h-7 text-[#078A32]" />
+          </div>
+          <h3 className="text-base font-bold text-[#061B33]">Sign in to view your bookings</h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            Trip history, receipts, and live status are private to your customer account.
+          </p>
+          <div className="flex items-center justify-center gap-3 pt-2">
+            <Link
+              href="/login?redirect=/customer/bookings"
+              className="inline-flex items-center gap-2 bg-[#078A32] hover:bg-[#056B27] text-white text-xs font-bold px-6 py-3 rounded-xl shadow-md transition-all"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Sign In</span>
+            </Link>
+            <Link
+              href="/register?redirect=/customer/bookings"
+              className="inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-5 py-3 rounded-xl transition-all"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Create Account</span>
+            </Link>
+          </div>
         </div>
       ) : filteredBookings.length === 0 ? (
         <div className="bg-white rounded-3xl p-10 border border-slate-200 text-center space-y-4 shadow-xs">
